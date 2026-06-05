@@ -1,0 +1,34 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+
+# Vendored third-party source (cloned at setup)
+third_party/
+
+# Model checkpoints (downloaded at setup, multi-GB)
+models/
+# facexlib/gfpgan runtime weight cache (CWD-relative default path)
+gfpgan/
+
+# Runtime artifacts
+outputs/
+temp/
+*.log
+
+# Media (test inputs/outputs)
+*.mp4
+*.mov
+*.wav
+*.mp3
+*.webm
+!assets/**
+
+# OS / editor
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/
