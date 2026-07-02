@@ -1,15 +1,17 @@
 # Third-Party Notices & Licenses
 
-This application is assembled from open-source components that all permit
-commercial use. Bundled model weights are commercial-safe; no non-commercial
-weights are included or downloaded.
+This build targets **personal (non-commercial) use**: the default matting
+engine (RobustVideoMatting) is GPL-3.0. Setting `commercial_safe=True` in
+`RenderConfig` forces the BiRefNet (MIT) path and never loads RVM — with that
+flag, every component below permits commercial use.
 
 ## Models
 
 | Component | Repo | License | Commercial use |
 |---|---|---|---|
 | SadTalker (animation) | OpenTalker/SadTalker | Apache-2.0 (code) + MIT (weights) | Yes |
-| BiRefNet-matting | ZhengPeng7/BiRefNet | MIT | Yes |
+| RobustVideoMatting (default matting) | PeterL1n/RobustVideoMatting @ `53d74c68` | GPL-3.0 | **No** (personal use; disabled by `commercial_safe=True`) |
+| BiRefNet-matting (commercial-safe matting) | ZhengPeng7/BiRefNet | MIT | Yes |
 | GFPGAN (optional enhancer) | TencentARC/GFPGAN | Apache-2.0 | Yes |
 | facexlib (face utils/weights) | xinntao/facexlib | Apache-2.0 | Yes |
 
@@ -25,7 +27,10 @@ executable, not linked).
 
 - Wav2Lip (LRS2/BBC non-commercial), LivePortrait (InsightFace weights non-commercial),
   Hallo2/Hallo3 (CogVideo-5B non-commercial), Sonic / FLOAT / V-Express / DreamTalk
-  (research-only), RVM (GPL-3.0 copyleft), RMBG-2.0 (CC BY-NC 4.0).
+  (research-only), RMBG-2.0 (CC BY-NC 4.0).
+- RVM (GPL-3.0) is NOT excluded anymore: it is the default matting engine for
+  personal use, contained in `lipsync/matting_rvm.py` behind the
+  `commercial_safe` flag (see the Models table above).
 
 ## Obligations
 

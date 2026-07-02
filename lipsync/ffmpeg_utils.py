@@ -31,6 +31,11 @@ def ffprobe_exe() -> str | None:
     return shutil.which("ffprobe")
 
 
+def has_ffprobe() -> bool:
+    """imageio-ffmpeg ships NO ffprobe — callers must fail loud, not guess."""
+    return ffprobe_exe() is not None
+
+
 def run(cmd: list[str]) -> None:
     """Run an ffmpeg/ffprobe command, raising with stderr tail on failure."""
     proc = subprocess.run(cmd, capture_output=True, text=True)

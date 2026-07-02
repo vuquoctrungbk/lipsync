@@ -45,6 +45,14 @@ def free_vram() -> None:
         torch.cuda.empty_cache()
 
 
+def free_vram_bytes() -> int:
+    """Free device memory right now (0 on CPU). Chunk sizing consumes this."""
+    if torch.cuda.is_available():
+        free, _total = torch.cuda.mem_get_info()
+        return int(free)
+    return 0
+
+
 def reset_peak() -> None:
     if torch.cuda.is_available():
         torch.cuda.reset_peak_memory_stats()

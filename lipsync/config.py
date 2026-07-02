@@ -46,6 +46,16 @@ class RenderConfig:
     # unload SadTalker before matting on tighter cards.
     sequential_vram: bool = False
 
+    # Matting backend. RVM (GPL-3) is the fast default for personal use;
+    # commercial_safe=True forces the MIT-licensed BiRefNet path regardless.
+    matting_engine: str = "rvm"       # rvm | birefnet
+    commercial_safe: bool = False
+
+    # When set, seeds torch/numpy/random at render start so SadTalker's
+    # stochastic pose CVAE + blink sampling are reproducible (comparison
+    # renders, chunked-vs-full equivalence tests).
+    seed: int | None = None
+
     # Green-screen compositing / encoding
     green_rgb: tuple[int, int, int] = DEFAULT_GREEN_RGB
     fps: int = 25                     # SadTalker renders at 25 fps

@@ -3,7 +3,7 @@
 Turn **one still character image + a voice audio file** into a **lip-synced talking-head video on a solid green background**, ready to chroma-key into other videos. 100% local — no paid APIs, no cloud.
 
 - **Animation:** [SadTalker](https://github.com/OpenTalker/SadTalker) (Apache-2.0) — natural head motion + blinks + lip-sync from a single image.
-- **Matting:** [BiRefNet](https://github.com/ZhengPeng7/BiRefNet) (MIT) — soft alpha to isolate the character.
+- **Matting:** [RobustVideoMatting](https://github.com/PeterL1n/RobustVideoMatting) (GPL-3.0, default — fast + temporally stable, personal use) or [BiRefNet](https://github.com/ZhengPeng7/BiRefNet) (MIT — set `commercial_safe=True` to force it). RVM is loaded via torch.hub pinned to commit `53d74c68…` (weights cached in `models/rvm`, ~15 MB on first run; checkpoint sha256 `3c7c1d92…4f8`).
 - **Compositing/encode:** ffmpeg → solid green MP4.
 - **UI:** Gradio (local, single-user).
 
@@ -58,7 +58,13 @@ Matting is **required**: SadTalker keeps the source image's background, so the c
 
 ## Vietnamese validation
 
-The pipeline is language-agnostic, but lip-sync accuracy on Vietnamese (a tonal language) has not been benchmarked. Before relying on it: render a 10–30 s clip of your **actual** speaker and inspect the mouth frame-by-frame. If sync is off by ≥2 frames on vowels/consonants, open an issue to consider a Whisper-based engine (MuseTalk) — but do not swap silently.
+Objective lip-sync scoring (SyncNet LSE-D/LSE-C) plus a Vietnamese phoneme spot-check protocol live in [docs/vietnamese-validation-protocol.md](docs/vietnamese-validation-protocol.md). Score any render with:
+
+```powershell
+.venv\Scripts\python.exe scripts\sync_metrics.py --video outputs\clip.mp4
+```
+
+The pilot verdict on the real MC speaker is tracked there (currently blocked on real assets). Engine changes are never made silently — the protocol defines evidence-based escalation.
 
 ## Keying the green in an editor
 
@@ -79,4 +85,4 @@ docs/                  architecture, codebase summary, usage guide
 
 ## Licenses
 
-All runtime components are commercial-use-safe. See [NOTICE.md](NOTICE.md). No non-commercial weights are bundled (no Wav2Lip, InsightFace, RMBG-2.0, etc.).
+This build targets **personal (non-commercial) use**: the default matting engine, RobustVideoMatting, is **GPL-3.0**. For a commercial-safe run set `commercial_safe=True` in `RenderConfig` — that forces the MIT-licensed BiRefNet path and never loads RVM. All other runtime components (SadTalker Apache-2.0, BiRefNet MIT) are commercial-use-safe; see [NOTICE.md](NOTICE.md). No Wav2Lip/InsightFace/RMBG-2.0 weights are bundled.

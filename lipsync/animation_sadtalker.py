@@ -8,10 +8,12 @@ later pipeline stage.
 from __future__ import annotations
 
 import contextlib
+import random
 import sys
 import warnings
 from pathlib import Path
 
+import numpy as np
 import torch
 
 from . import config
@@ -84,6 +86,16 @@ class SadTalkerEngine:
         first_frame_dir = save_dir / "first_frame"
         first_frame_dir.mkdir(parents=True, exist_ok=True)
         reset_peak()
+
+        # SadTalker is stochastic (unseeded pose-CVAE noise + blink sampling).
+        # A pinned seed makes comparison renders and chunked-vs-full
+        # equivalence tests reproducible; None keeps natural variation.
+        if self.cfg.seed is not None:
+            random.seed(self.cfg.seed)
+            np.random.seed(self.cfg.seed)
+            torch.manual_seed(self.cfg.seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed_all(self.cfg.seed)
 
         # Face detect + 3DMM in fp32 (detection is sensitive to precision).
         first_coeff, crop_pic, crop_info = self._preprocess.generate(

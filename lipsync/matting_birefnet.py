@@ -57,6 +57,9 @@ class BiRefNetMatte:
         self._model = None
         free_vram()
 
+    def reset_clip(self) -> None:
+        """BiRefNet is stateless per frame — nothing to clear."""
+
     @torch.inference_mode()
     def alpha_for(self, rgb: np.ndarray) -> np.ndarray:
         """rgb: HxWx3 uint8 -> alpha HxW float32 in [0,1] at the input size."""

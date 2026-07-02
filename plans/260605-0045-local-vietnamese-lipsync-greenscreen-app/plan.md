@@ -6,6 +6,7 @@ priority: P1
 effort: 26h
 branch: (not a git repo yet)
 tags: [lipsync, sadtalker, birefnet, gradio, vietnamese, green-screen, local-inference]
+blockedBy: [260703-0017-pa2-v2-completion-tech-refresh]
 created: 2026-06-05
 ---
 

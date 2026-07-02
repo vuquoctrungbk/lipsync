@@ -8,6 +8,8 @@ __pycache__/
 
 # Vendored third-party source (cloned at setup)
 third_party/
+# SyncNet validation harness working dir (cloned repo + isolated venv + weights)
+tools/syncnet/
 
 # Model checkpoints (downloaded at setup, multi-GB)
 models/

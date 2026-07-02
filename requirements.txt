@@ -51,5 +51,11 @@ transformers==4.38.2
 timm==0.9.16
 huggingface_hub==0.21.4
 
+# --- RobustVideoMatting (default matting engine; GPL-3, personal use) ---
+# No pip package: loaded via torch.hub pinned to commit
+# PeterL1n/RobustVideoMatting@53d74c6826735f01f4406b5ca9075eee27bec094
+# (see lipsync/matting_rvm.py). Weights cache under models/rvm on first load
+# (needs internet once, ~15 MB). commercial_safe=True avoids it entirely.
+
 # --- UI ---
 gradio==4.44.1
