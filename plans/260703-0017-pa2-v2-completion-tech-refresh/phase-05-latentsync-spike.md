@@ -1,7 +1,7 @@
 ---
 phase: 5
 title: "LatentSync Spike"
-status: pending
+status: blocked  # blocked-on-assets 2026-07-03: the plan's dependency graph requires the real MC clip + portrait as the spike's judged test set
 effort: "1d (hard timebox)"
 priority: P2
 dependencies: [1]

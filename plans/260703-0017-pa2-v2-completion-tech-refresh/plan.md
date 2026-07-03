@@ -43,11 +43,11 @@ Gated tracks: LatentSync refine spike [5], MuseTalk bake-off [6] — subprocess-
 |-------|------|--------|
 | 1 | [Validation Harness & VN Pilot](./phase-01-validation-harness-vn-pilot.md) | ✅ Completed (pilot verdict BLOCKED-ON-ASSETS) |
 | 2 | [RVM Matting & Pipeline Hardening](./phase-02-rvm-matting-pipeline-hardening.md) | ✅ Completed (2 criteria flagged, see notes) |
-| 3 | [WebM Alpha Export](./phase-03-webm-alpha-export.md) | Pending |
-| 4 | [Long-Audio Chunking & Resume](./phase-04-long-audio-chunking-resume.md) | Pending |
-| 5 | [LatentSync Spike](./phase-05-latentsync-spike.md) | Pending |
-| 6 | [MuseTalk Bake-off](./phase-06-musetalk-bake-off.md) | Pending |
-| 7 | [UX Polish & Regression](./phase-07-ux-polish-regression.md) | Pending |
+| 3 | [WebM Alpha Export](./phase-03-webm-alpha-export.md) | ✅ Completed (CapCut manual check w/ user pending) |
+| 4 | [Long-Audio Chunking & Resume](./phase-04-long-audio-chunking-resume.md) | ✅ Completed |
+| 5 | [LatentSync Spike](./phase-05-latentsync-spike.md) | ⏸ Blocked-on-assets (real MC clip = its test set, per dependency graph) |
+| 6 | [MuseTalk Bake-off](./phase-06-musetalk-bake-off.md) | ⏸ Blocked-on-assets (same) |
+| 7 | [UX Polish & Regression](./phase-07-ux-polish-regression.md) | ✅ Completed (P5/P6 fold-in travels with their asset blocker) |
 
 ## Dependency graph
 
@@ -134,6 +134,8 @@ Execution order chosen: P2 → P1 (both are plan-sanctioned independent starters
 Action items from Session 1 remain open (user answers can still override defaults; real VN assets still awaited).
 
 **Session 2 addendum (post P1+P2 finalize):** user returned and decided: (1) COMMIT phases 1-2; (2) e2e 64s vs ≤55s target ACCEPTED as phase-complete (matting de-bottlenecked 71→17.2s; residual is animate stage); (3) CONTINUE into P3 then P4 in this session. Phase-02 criterion checkbox updated accordingly.
+
+**Session 2 close-out:** P3, P4, P7 completed same session (all criteria evidence in the phase files; P3/P4 review DONE_WITH_CONCERNS → 2 High + 4 Medium fixed same session). P5/P6 marked **blocked-on-assets** — the dependency graph makes the real MC clip + portrait their test set, so running them on TTS would produce non-decision-grade numbers. Remaining plan state: P5/P6 + pilot verdict + CapCut one-time manual check, ALL gated on the user's real assets (+ the 4 Session-1 answers, defaults in effect).
 
 ### Verification Results
 - Covered by `## Red Team Review` (tier Full, 54+ claims grep/trace-verified, Failed: 0 after fixes). Validate step 2.5 guard applied; no `[UNVERIFIED]` tags remain.

@@ -1,7 +1,7 @@
 ---
 phase: 3
 title: "WebM Alpha Export"
-status: pending
+status: completed  # CapCut manual import check pending (user action, docs in phase 7)
 effort: "1d"
 priority: P2
 dependencies: [2]
@@ -50,12 +50,20 @@ Replace `composite_to_green` with a single streaming driver: `composite(frames, 
 
 ## Success Criteria
 
-- [ ] `both` render produces valid green MP4 + WebM alpha in one matte pass
-- [ ] ffprobe + RGBA-decode assertions pass (corner transparent, center opaque, audio present)
-- [ ] Missing libvpx-vp9 produces a clear actionable error, not a stack trace
-- [ ] Webm sink failure in `both` mode leaves the green output intact + surfaces a warning (test)
-- [ ] `tests/test_pipeline_e2e.py` passes UNMODIFIED (default-mode contract preserved)
-- [ ] CapCut import verified once manually (screenshot/note in docs)
+- [x] `both` render produces valid green MP4 + WebM alpha in one matte pass (E2E 78s; unit spy proves matte called once/frame)
+- [x] ffprobe + RGBA-decode assertions pass (corner alpha <10/255, center >200/255, opus audio, duration ±0.3s). CORRECTION vs plan text: VP9 alpha in WebM probes as `pix_fmt yuv420p` + stream tag `alpha_mode=1` (alpha is container side-data), and RGBA decode must force `-c:v libvpx-vp9` — the native decoder silently returns opaque alpha. Tests assert the corrected truth.
+- [x] Missing libvpx-vp9 produces a clear actionable error naming the resolved ffmpeg (unit test; check runs BEFORE the expensive animate stage)
+- [x] Webm sink failure in `both` mode leaves the green output intact + surfaces a warning (2 unit tests: injected mid-stream death + corrupt audio; dead-sink tmp files cleaned)
+- [x] `tests/test_pipeline_e2e.py` passes UNMODIFIED (73s run post-refactor — default-mode contract preserved)
+- [ ] CapCut import verified once manually (USER action — drag `lipsync_alpha_*.webm` into CapCut Desktop over any background; screenshot/note lands in docs via phase 7)
+
+## Completion Notes (2026-07-03)
+
+- `composite()` driver replaced `composite_to_green` (single production caller updated; P2 behavior tests ported to the new signature in the same change, per the post-P2 note).
+- Sinks: `_GreenSink` (imageio H.264 + AAC mux with preserved silent-video fallback-as-warning) and `_WebmSink` (Popen rgba pipe; stderr → FILE to avoid the Windows pipe-buffer deadlock; straight alpha; temp+rename). Driver additionally calls `sink.abort()` when a sink dies mid-stream (reaps the ffmpeg process + partial tmp — gap found during implementation, not in the plan).
+- `both` mode measured: 78s vs 64s green-only on the 5.5s reference clip — VP9 encodes concurrently with matting, ~14s overhead, no second matte pass.
+- `Pipeline.run` additive contract shipped: `outputs: {format: Path}`, `output` = green else webm. UI: output-format Radio (defaults Green MP4 per validation-log default), WebM download via `gr.File` (gr.Video can't preview alpha), warnings surfaced in status markdown (closes the P2 populate-only channel).
+- Suite: 34 passed fast tier (incl. 6 new webm tests), both-mode E2E + v1-contract E2E green.
 
 ## Risk Assessment
 

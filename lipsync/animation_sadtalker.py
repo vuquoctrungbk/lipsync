@@ -78,9 +78,20 @@ class SadTalkerEngine:
             return torch.autocast("cuda", dtype=torch.float16)
         return contextlib.nullcontext()
 
-    def animate(self, image_path: str | Path, audio_path: str | Path,
-                work_dir: str | Path) -> Path:
-        """Animate the portrait to the audio. Returns the SadTalker MP4 path."""
+    def prepare_coeff(self, image_path: str | Path, audio_path: str | Path,
+                      work_dir: str | Path,
+                      reuse_coeff_path: str | Path | None = None) -> dict:
+        """Face detect + 3DMM + audio2coeff ONCE for the FULL audio.
+
+        Returns the bundle every later render step needs. audio2coeff emits a
+        cheap (num_frames, 70) mat, so this runs whole even for 600s clips —
+        only facerender needs chunking.
+
+        `reuse_coeff_path` (resume): rebuild only the DETERMINISTIC
+        preprocess bundle and pin the given coeff mat — audio2coeff is
+        stochastic, so re-running it would produce a mat that no longer
+        matches already-rendered segments.
+        """
         self.load()
         save_dir = Path(work_dir)
         first_frame_dir = save_dir / "first_frame"
@@ -107,14 +118,39 @@ class SadTalkerEngine:
                 "No face detected in the source image. Use a clear, front-facing portrait."
             )
 
+        if reuse_coeff_path is not None:
+            coeff_path = reuse_coeff_path
+        else:
+            with self._autocast():
+                batch = get_data(first_coeff, str(audio_path), self.device,
+                                 ref_eyeblink_coeff_path=None, still=self.cfg.still_mode)
+                coeff_path = self._audio2coeff.generate(
+                    batch, str(save_dir), self.cfg.pose_style, ref_pose_coeff_path=None)
+
+        return {
+            "image_path": str(image_path),
+            "first_coeff": first_coeff,
+            "crop_pic": crop_pic,
+            "crop_info": crop_info,
+            "coeff_path": Path(coeff_path),
+        }
+
+    def render_from_coeff(self, bundle: dict, coeff_path: str | Path,
+                          audio_for_mux: str | Path, out_dir: str | Path) -> Path:
+        """facerender + paste-back for ONE coeff mat (full or a halo slice).
+
+        `audio_for_mux` only feeds the vendored per-output mux — chunked
+        segments pass a 1s silent wav (the mux decodes its whole audio input
+        per call and the final audio is muxed by the compositor anyway).
+        """
+        self.load()
+        out_path = Path(out_dir)
+        out_path.mkdir(parents=True, exist_ok=True)
+
         with self._autocast():
-            batch = get_data(first_coeff, str(audio_path), self.device,
-                             ref_eyeblink_coeff_path=None, still=self.cfg.still_mode)
-            coeff_path = self._audio2coeff.generate(
-                batch, str(save_dir), self.cfg.pose_style, ref_pose_coeff_path=None)
             data = get_facerender_data(
-                coeff_path, crop_pic, first_coeff, str(audio_path),
-                self.cfg.batch_size, None, None, None,
+                str(coeff_path), bundle["crop_pic"], bundle["first_coeff"],
+                str(audio_for_mux), self.cfg.batch_size, None, None, None,
                 expression_scale=self.cfg.expression_scale,
                 still_mode=self.cfg.still_mode,
                 preprocess=self.cfg.preprocess,
@@ -122,13 +158,25 @@ class SadTalkerEngine:
             )
             enhancer = "gfpgan" if self.cfg.use_enhancer else None
             result = self._animate.generate(
-                data, str(save_dir), str(image_path), crop_info,
+                data, str(out_path), bundle["image_path"], bundle["crop_info"],
                 enhancer=enhancer, background_enhancer=None,
                 preprocess=self.cfg.preprocess, img_size=self.cfg.face_size,
             )
 
-        print(vram_report("sadtalker"))
         out = Path(result)
         if not out.exists():
             raise SadTalkerError("SadTalker did not produce an output video")
+        return out
+
+    def animate(self, image_path: str | Path, audio_path: str | Path,
+                work_dir: str | Path) -> Path:
+        """Single-shot path (≤120s audio): coeff + render in one go.
+
+        Behavior-identical to v1 — the chunked path composes the same two
+        steps with sliced mats instead.
+        """
+        bundle = self.prepare_coeff(image_path, audio_path, work_dir)
+        out = self.render_from_coeff(bundle, bundle["coeff_path"],
+                                     audio_path, work_dir)
+        print(vram_report("sadtalker"))
         return out

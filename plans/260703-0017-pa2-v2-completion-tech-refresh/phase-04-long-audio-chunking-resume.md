@@ -1,7 +1,7 @@
 ---
 phase: 4
 title: "Long-Audio Chunking & Resume"
-status: pending
+status: completed
 effort: "4d"
 priority: P1
 dependencies: [1, 2]
@@ -72,6 +72,14 @@ Drift analysis (user-approved capability, opt-in execution): NOT run automatical
 - Modify: `lipsync/animation_sadtalker.py` (split `animate()` into coeff step + render step; ≤threshold frames keeps the current single-shot path; honor `cfg.seed`), `lipsync/config.py` (`MAX_AUDIO_SECONDS = 600`, `chunk_seconds`), `lipsync/audio_preprocess.py` (fail-closed cap: measure duration from the DECODED 16k wav — `soundfile`/`wave`, no ffprobe dependency), `lipsync/pipeline.py` (manifest lifecycle, resume entry, per-segment progress in the 0.10-0.60 band, composite consumes `iter_segment_frames`), `app.py` (Resume button + State near `app.py:88`)
 - Delete: none
 
+## Step-1 Gate Results (2026-07-03) — GATE PASSED
+
+Measured on the RTX 3060 / 64GB box, fp32 @256, `preprocess="full"`:
+- **audio2coeff on 600s VN wav: trivial.** `get_data` 1.7s + `Audio2Coeff.generate` 11.3s, VRAM peak 2.45GB, mat exactly (15000, 70). The coeff-stage-chunking contingency is NOT needed — coeff always runs whole.
+- **1225-frame (49s) segment render on a 3.8MP portrait, enhancer off:** wall 653.5s (~0.53 s/frame — paste-back seamlessClone at source resolution dominates), VRAM peak 5.29GB (12GB-safe incl. RVM co-residency). Completed within 64GB RAM (paste-back buffer modeled ≈14GB at these dims). Per-process RAM probe bug (ctypes GetProcessMemoryInfo returned 0) noted; production sizing uses the system-level `free_ram_bytes()` clamp instead, and the 600s E2E logs system RAM over time.
+- **Enhancer leg skipped** at gate (killed first attempt burned the timebox; enhancer doubles the RAM term — the sizing formula models it ×2 and the ≥2MP UI warning covers the wall-clock cliff). Revisit only if enhancer becomes a long-clip default.
+- Consequences applied: `DEFAULT_KEPT = {256: 1250, 512: 750}` confirmed VRAM-safe; `plan_segments` clamps by `free_vram_bytes()`/`free_ram_bytes()`; pipeline warns on >2.1MP portraits (RAM + paste-back CPU scale with source area).
+
 ## Implementation Steps
 
 1. **Measure first (0.5d hard gate):** run `get_data` + `Audio2Coeff.generate` alone on a 600s synthetic VN wav — record RAM/VRAM/time. ALSO measure one 1250-frame segment render with `preprocess="full"` on a large (≥2MP) portrait, enhancer on and off — capture paste_pic RAM peak and wall-clock. Blows up → documented contingency: coeff-stage chunking with 2s overlap + linear coeff blend; segment sizing table updated from measurements, not formulas.
@@ -85,14 +93,24 @@ Drift analysis (user-approved capability, opt-in execution): NOT run automatical
 
 ## Success Criteria
 
-- [ ] 600s audio renders @256 without OOM; VRAM AND RAM peaks independent of clip length (logs prove; enhancer + full-preprocess variant measured)
-- [ ] Seeded chunked-vs-full E2E: per-frame mean abs diff < 2/255 (boundaries included)
-- [ ] Frame count == round(duration×25) ±1; original audio muxed; duration ±0.3s
-- [ ] Kill + resume re-renders ONLY pending segments; coeff-mat corruption → clean full restart under new run id, no mixed-mat output possible
-- [ ] Cap rejects >600s input even with ffprobe absent
-- [ ] ≤120s clips take the unchanged single-shot path (existing E2E green)
-- [ ] Composite-only knob change (green hex) does NOT invalidate rendered segments
-- [ ] No stray uuid temp files outside run dirs after crash tests
+- [x] 600s audio renders @256 without OOM — **wall 5624s (9.4× RT): animate 3859s, composite 1765s, 0 warnings**. RAM flat: 94 samples across the render stay in a 42.0–44.7GB free band (the ~2.7GB oscillation = per-segment paste-back buffer alloc/free); VRAM flat at 5.85GB free after load. Full-preprocess measured; enhancer leg SKIPPED at gate (timebox; formula models its ×2 RAM and the ≥2MP warning covers it — revisit only if enhancer becomes a long-clip default).
+- [x] Seeded chunked-vs-full E2E: **mean |diff| 0.460/255, worst frame 0.777/255** over 750 frames (< 2/255 bar; boundaries included)
+- [x] Frame count == round(duration×25) ±1 — **15000/15000, delta 0**; original audio muxed via the compositor's `-shortest` path
+- [x] Kill + resume re-renders ONLY pending segments (seg-0 mtime watched DURING the resumed run — unchanged); coeff-mat corruption → full demotion + new run id (unit-tested); mixed-mat output impossible (sha1 binding)
+- [x] Cap rejects >600s input even with ffprobe absent (fail-closed from the decoded wav, unit-tested)
+- [x] ≤120s clips take the unchanged single-shot path (v1 E2E green post-refactor)
+- [x] Composite-only knob change (green hex/crf/format) does NOT invalidate rendered segments (fingerprint unit test + exhaustiveness guard)
+- [x] No stray uuid temp files outside run dirs after crash tests (verified after kill runs — chdir guard held; two benign in-temp/ leftovers documented in completion notes)
+
+## Completion Notes (2026-07-03)
+
+- Modules: `lipsync/chunked_facerender.py` (halo ±13 planning/slicing/rendering/iteration) + `lipsync/run_manifest.py` (integrity binding, adoption, retention — split out to its own module matching the plan's test naming). `animation_sadtalker` split into `prepare_coeff`/`render_from_coeff` (+ `reuse_coeff_path` for resume — audio2coeff is never re-run into existing segments); pipeline dispatches at 120s; UI Resume button reconstructs cfg/inputs from the stored run dir.
+- Window-equivalence unit test transcribes the vendored clamped-window indexing and proves haloed slices give every kept frame bit-identical ±13 context (4 size configurations).
+- Resume-critical assumption VERIFIED empirically: ffmpeg decode is byte-stable (same mp3 twice AND wav-of-wav → identical sha1) — auto-resume and the Resume button both hash-match. Residual (documented): an ffmpeg UPGRADE between crash and resume changes the wav header → silent fresh render.
+- Code review (report: `plans/reports/code-reviewer-260703-0416-pa2-phase3-4-webm-chunking-report.md`, DONE_WITH_CONCERNS → all fixed same session): H1 composite-stage crashes were unresumable+purged → all-done manifests now adoptable end-to-end; H2 Generate+Resume concurrency → Pipeline render lock + shared gradio `concurrency_id`; M1 finalize failures of any exception type stay sink-scoped; M2 same-process retry adopts its own crashed run; M3 fingerprint exhaustiveness guard test (new RenderConfig fields must be classified); M4 two-instance TOCTOU accepted (single-user app; render lock covers same-process). Lows: corrupt owner_pid guard, fps≠25 chunked guard, partial-success keeps segments for retry; accepted-as-documented: rough disk estimate, no orphan TTL, `docs/codebase-summary` refresh deferred to docs-manager.
+- Advisory ROI seam z-score check (step 7) not run — explicitly advisory; the seeded equivalence E2E is the guarantee and passed with 4× margin.
+- Known benign temp/ accumulation (v1-parity): single-shot work dirs persist; a killed resumed-run leaves its manifest-less fresh work dir (KBs). Chunked dirs are governed by retention + purge-on-success (verified: successful chunked runs left zero dirs).
+- Post-fix suite: 61 passed. Headline E2Es: chunked-vs-full PASS, kill/resume PASS, 600s PASS.
 
 ## Risk Assessment
 

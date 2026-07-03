@@ -3,11 +3,17 @@
 SadTalker's audio encoder expects 16 kHz mono PCM. The encoder is
 language-agnostic (mel-spectrogram based), so no Vietnamese-specific handling is
 needed here — only format normalization.
+
+The length cap is enforced FAIL-CLOSED from the decoded wav itself (stdlib
+`wave`): ffprobe is optional (imageio-ffmpeg installs ship none) and only
+provides a fast pre-decode rejection, never the enforcement.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import subprocess
+import wave
 from pathlib import Path
 
 from .config import MAX_AUDIO_SECONDS
@@ -35,9 +41,26 @@ def probe_duration(path: Path) -> float | None:
         return None
 
 
+def wav_duration_seconds(path: str | Path) -> float:
+    """Exact duration of a PCM wav from its own header (no ffprobe needed)."""
+    try:
+        with contextlib.closing(wave.open(str(path), "rb")) as w:
+            rate = w.getframerate()
+            if rate <= 0:
+                raise AudioError(f"wav reports invalid sample rate: {path}")
+            return w.getnframes() / rate
+    except (wave.Error, EOFError, OSError) as exc:
+        # stdlib wave raises EOFError (not wave.Error) on truncated headers
+        raise AudioError(f"could not read wav header of {path}: {exc}") from exc
+
+
 def prepare_audio(input_path: str | Path, work_dir: str | Path,
                   max_seconds: int = MAX_AUDIO_SECONDS) -> Path:
-    """Validate and convert audio to 16 kHz mono PCM WAV. Returns the WAV path."""
+    """Validate and convert audio to 16 kHz mono PCM WAV. Returns the WAV path.
+
+    The cap is enforced on the DECODED wav (fail-closed); the ffprobe check is
+    only a fast courtesy rejection before the decode.
+    """
     src = Path(input_path)
     if not src.exists():
         raise AudioError(f"audio file not found: {src}")
@@ -67,4 +90,13 @@ def prepare_audio(input_path: str | Path, work_dir: str | Path,
 
     if not out.exists() or out.stat().st_size == 0:
         raise AudioError("audio conversion produced an empty file")
+
+    decoded = wav_duration_seconds(out)
+    if decoded <= 0:
+        raise AudioError(f"audio has no playable duration: {src.name}")
+    if decoded > max_seconds:
+        raise AudioError(
+            f"audio is {decoded:.0f}s; the limit is {max_seconds}s. "
+            "Trim it and try again."
+        )
     return out

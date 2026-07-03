@@ -5,6 +5,9 @@ consistent and a CPU fallback is automatic.
 """
 from __future__ import annotations
 
+import ctypes
+import os
+import sys
 from dataclasses import dataclass
 
 import torch
@@ -51,6 +54,31 @@ def free_vram_bytes() -> int:
         free, _total = torch.cuda.mem_get_info()
         return int(free)
     return 0
+
+
+class _MemoryStatusEx(ctypes.Structure):
+    _fields_ = [
+        ("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong),
+        ("ullTotalPhys", ctypes.c_ulonglong), ("ullAvailPhys", ctypes.c_ulonglong),
+        ("ullTotalPageFile", ctypes.c_ulonglong), ("ullAvailPageFile", ctypes.c_ulonglong),
+        ("ullTotalVirtual", ctypes.c_ulonglong), ("ullAvailVirtual", ctypes.c_ulonglong),
+        ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+    ]
+
+
+def free_ram_bytes() -> int:
+    """Available physical RAM (dependency-free). Chunk sizing consumes this —
+    SadTalker's paste-back buffers whole segments in RAM at source resolution."""
+    if sys.platform == "win32":
+        stat = _MemoryStatusEx()
+        stat.dwLength = ctypes.sizeof(_MemoryStatusEx)
+        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat)):
+            return int(stat.ullAvailPhys)
+        return 0
+    try:  # POSIX fallback
+        return os.sysconf("SC_AVPHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
+    except (ValueError, OSError, AttributeError):
+        return 0
 
 
 def reset_peak() -> None:

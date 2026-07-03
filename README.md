@@ -30,12 +30,15 @@ Then upload a character image + a voice audio file, click **Generate**, and down
 ## How it works
 
 ```
-image + audio
-   -> ffmpeg: audio -> 16 kHz mono WAV
-   -> SadTalker: animate the portrait (face detect -> 3DMM -> audio2coeff -> facerender)   [fp32, ~3 GB VRAM]
-   -> BiRefNet: per-frame alpha matte                                                       [fp16]
-   -> composite foreground over solid green + ffmpeg encode (H.264) + remux audio
-   -> outputs\lipsync_green_<timestamp>.mp4
+image + audio (≤600 s)
+   -> ffmpeg: audio -> 16 kHz mono WAV (length cap enforced from the decoded wav)
+   -> SadTalker: face detect -> 3DMM -> audio2coeff ONCE (full audio)          [fp32]
+      -> facerender: single-shot ≤120 s, else ±13-frame halo-overlapped
+         segments with a crash-resumable manifest
+   -> matting engine (RVM default | BiRefNet): per-frame alpha                 [fp16]
+   -> one streaming matte pass fans out to the requested sinks:
+        green MP4 (H.264 + AAC)  and/or  WebM VP9 alpha (yuva420p + Opus)
+   -> outputs\lipsync_green_<runid>.mp4 / lipsync_alpha_<runid>.webm
 ```
 
 Matting is **required**: SadTalker keeps the source image's background, so the character is matted out and placed on green (you cannot just chroma-key the raw output — there is no green to key).
@@ -44,6 +47,7 @@ Matting is **required**: SadTalker keeps the source image's background, so the c
 
 | Setting | Default | Notes |
 |---|---|---|
+| Quality preset | Draft | Draft = 256/no enhancer; High = 512 + GFPGAN; Custom = leave controls alone |
 | Face render size | 256 | 512 = sharper, slower, more VRAM |
 | Framing | full | `full` keeps the whole portrait (best for green screen); `crop` = head only |
 | Still mode | on | less head drift, more stable from a single image |
@@ -51,10 +55,26 @@ Matting is **required**: SadTalker keeps the source image's background, so the c
 | Expression scale | 1.0 | mouth/expression intensity |
 | Pose style | 0 | head-pose preset [0–45] |
 | Background color | #00B140 | the key color to fill behind the character |
+| Matting engine | RVM | RVM = fast + temporally stable (GPL-3, personal use); BiRefNet = MIT, slower |
+| Commercial-safe mode | off | forces BiRefNet; GPL RVM is never loaded |
+| Output format | Green MP4 | WebM alpha (CapCut, true transparency) or Both — one matte pass either way |
 
-## Performance (RTX 3060 12 GB, measured)
+Long clips: audio up to **600 s (10 min)**. Clips over 120 s render in
+checkpointed segments — if the app dies mid-render, **Resume interrupted
+render** continues from the last finished segment (compositing restarts).
+The **Analyze sync drift** button scores per-60s LSE-D windows of a finished
+render on demand (see Vietnamese validation below).
 
-~5.5 s clip @ 256/full/fp32: animate ≈ 42 s, matte+composite ≈ 71 s. Peak VRAM ≈ 4 GB (SadTalker + BiRefNet co-resident). Matting (~2 fps at 1024) is the bottleneck — lower the face size or clip length for faster turnaround.
+## Performance (RTX 3060 12 GB, measured 2026-07-03)
+
+| Clip | Settings | Wall time | Notes |
+|---|---|---|---|
+| 5.5 s | 256, RVM | **64 s** (animate 47 + composite 17) | was ~113 s with BiRefNet in v1 |
+| 18.6 s | 256, RVM | 116–126 s | animate 79–89 s dominates |
+| 18.6 s | 512, RVM | 274 s | 512 ≈ 3× animate cost, no sync gain |
+| 600 s | 256, RVM, chunked | **94 min** (≈9.4× realtime) | flat RAM/VRAM, 12 segments, exact 15000 frames |
+
+Pure matting: RVM ≈ 25 fps vs BiRefNet ≈ 3.3 fps at 800×1200 (7.6×). Peak VRAM ≈ 6 GB co-resident. The remaining bottleneck is SadTalker's facerender + paste-back — portraits over ~2 MP slow paste-back and grow RAM (the app warns).
 
 ## Vietnamese validation
 
