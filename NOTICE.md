@@ -32,6 +32,12 @@ executable, not linked).
   personal use, contained in `lipsync/matting_rvm.py` behind the
   `commercial_safe` flag (see the Models table above).
 
+## Development-only tools (not part of the shipped app)
+
+- SyncNet (`joonson/syncnet_python`) + S3FD weights: used ONLY by the local
+  validation harness (`tools/syncnet/`, gitignored) via `scripts/sync_metrics.py`.
+  Research license; never bundled, never imported by the app runtime.
+
 ## Obligations
 
 - Retain the Apache-2.0 / MIT notices above when redistributing.

@@ -18,6 +18,16 @@ Output: lip-synced talking-head MP4 rendered on a solid green chroma-key backgro
 Single engine for v1: **SadTalker** (Apache-2.0). UI: **Gradio**. Matting: **BiRefNet** (MIT).
 Output: flat solid-green H.264/265 MP4. MuseTalk and true-alpha export are DEFERRED (out of v1 scope).
 
+> **Phase-8 pilot gate status (2026-07-03):** absorbed by the v2 plan's Phase 1.
+> The measurement harness is live (`scripts/sync_metrics.py`; calibrated anchors
+> synced 6.564 / desynced 15.21) and the substitute-audio baseline is strong
+> (LSE-D ≈ 6.2, under the 8 PASS bar), but the verdict itself is
+> **BLOCKED-ON-ASSETS** — awaiting the real MC portrait + VN voice clip. Track in
+> `docs/vietnamese-validation-protocol.md` §6. This plan stays open only for that
+> gate; everything else shipped in commit `3786a12` and was upgraded by
+> `plans/260703-0017-pa2-v2-completion-tech-refresh/` (RVM matting, WebM alpha,
+> 600s chunked rendering + resume).
+
 ## Pipeline (locked order)
 
 ```

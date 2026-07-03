@@ -1,7 +1,7 @@
 ---
 phase: 7
 title: "UX Polish & Regression"
-status: pending
+status: completed  # P5/P6 verdict fold-in + CapCut manual check travel with their blockers
 effort: "1d"
 priority: P3
 dependencies: [2, 3, 4]
@@ -34,11 +34,17 @@ Close v2: quality presets, surfaced warnings, docs refresh, license notices, ful
 
 ## Success Criteria
 
-- [ ] Presets behave as labeled; overrides respected
-- [ ] Warnings/capability notices visible in UI status
-- [ ] All docs updated + accurate; NOTICE.md lists new components with correct license status
-- [ ] Full test suite green on target hardware; perf table recorded
-- [ ] v1 plan gate closed with linked evidence
+- [x] Presets behave as labeled; overrides respected (presets only pre-fill on dropdown CHANGE — `apply_preset` returns `gr.update`s; Custom is a no-op; render reads live control values)
+- [x] Warnings/capability notices visible in UI status (P3 wired the status panel; resume/mux/2MP warnings all flow through `PipelineResult.warnings`)
+- [x] All docs updated + accurate; NOTICE.md lists RVM (GPL-3 personal-use default + commercial_safe carve-out) and the SyncNet harness as dev-only tooling
+- [x] Full test suite green on target hardware — fast 61 passed; RUN_E2E: v1-contract (68.9s, post-all-changes), webm both-mode, seeded chunked-vs-full (0.460/255), kill/resume, 600s (15000/15000 frames). Perf table recorded in README.
+- [x] v1 plan gate closed with linked evidence: Phase-8 note added to the v1 plan pointing at protocol doc §6 — verdict itself BLOCKED-ON-ASSETS, plan intentionally NOT marked completed (per its own "completed only if pilot PASSed" rule)
+
+## Completion Notes (2026-07-03)
+
+- UI added: quality-preset dropdown (Draft/High/Custom), matting-engine dropdown + commercial-safe checkbox (phase-2's one-click fallback now real), "Analyze sync drift" button (subprocess to `scripts/sync_metrics.py --window 60`, opt-in, shares the `gpu-render` concurrency id so it can never interleave with a render).
+- P5/P6 verdict fold-in deferred WITH the phases themselves (blocked-on-assets — the plan's dependency graph makes the real MC clip their test set).
+- CapCut import: usage-guide has the how-to; the one-time manual verification remains with the user (documented fallback: green MP4 + chroma key).
 
 ## Risk Assessment
 

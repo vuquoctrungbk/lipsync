@@ -5,6 +5,8 @@ Three tiers, mirroring the repo's opt-in convention:
   - RUN_MODEL_TESTS=1:    loads real matting models (RVM ~15MB via torch.hub,
                           BiRefNet from the local HF cache) on tiny frames
   - RUN_E2E=1:            full renders (see also tests/test_pipeline_e2e.py)
+
+Shared fakes/fixtures live in tests/conftest.py.
 """
 import os
 import sys
@@ -17,6 +19,8 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from conftest import FakeBiRefNet, FakeMatte, FakeRVM, tiny_png_bytes  # noqa: E402
+
 from lipsync.config import RenderConfig  # noqa: E402
 
 MODEL_TESTS = pytest.mark.skipif(
@@ -26,92 +30,6 @@ MODEL_TESTS = pytest.mark.skipif(
 E2E = pytest.mark.skipif(
     os.environ.get("RUN_E2E") != "1", reason="set RUN_E2E=1 to run slow E2E tests"
 )
-
-
-# ---------------------------------------------------------------------------
-# fakes (behavior-bearing, not duck-type shells: they record calls and return
-# real alpha arrays so downstream math actually runs)
-# ---------------------------------------------------------------------------
-
-class FakeMatte:
-    def __init__(self, device="cpu", precision="fp32"):
-        self.device = device
-        self.precision = precision
-        self.loaded = False
-        self.unload_calls = 0
-        self.reset_calls = 0
-
-    def load(self):
-        self.loaded = True
-
-    def unload(self):
-        self.unload_calls += 1
-        self.loaded = False
-
-    def reset_clip(self):
-        self.reset_calls += 1
-
-    def alpha_for(self, rgb):
-        return np.ones(rgb.shape[:2], dtype=np.float32)
-
-
-class FakeRVM(FakeMatte):
-    pass
-
-
-class FakeBiRefNet(FakeMatte):
-    pass
-
-
-@pytest.fixture()
-def stubbed_pipeline(monkeypatch, tmp_path):
-    """Pipeline with heavy stages stubbed so run() exercises its real control
-    flow (sanitize, run ids, keyed matting cache, warnings) without models."""
-    import lipsync.pipeline as pl
-
-    class FakeSad:
-        def __init__(self, cfg, device):
-            self.cfg = cfg
-
-        def load(self):
-            pass
-
-        def unload(self):
-            pass
-
-        def animate(self, image, wav, work_dir):
-            return Path(work_dir) / "fake_animated.mp4"
-
-    def fake_prepare_audio(path, work, max_seconds=None):
-        out = Path(work) / "audio_16k_mono.wav"
-        out.write_bytes(b"RIFF")
-        return out
-
-    def fake_composite(animated, matte, cfg, audio, out_path, work_dir, progress=None):
-        # exercise the reset contract the way the real driver does
-        matte.reset_clip()
-        matte.alpha_for(np.zeros((4, 4, 3), dtype=np.uint8))
-        matte.reset_clip()
-        return Path(out_path), []
-
-    monkeypatch.setattr(pl, "SadTalkerEngine", FakeSad)
-    monkeypatch.setattr(pl, "prepare_audio", fake_prepare_audio)
-    monkeypatch.setattr(pl, "composite_to_green", fake_composite)
-    monkeypatch.setattr(pl, "_MATTING_ENGINES", {"rvm": FakeRVM, "birefnet": FakeBiRefNet})
-
-    img = tmp_path / "portrait.png"
-    img.write_bytes(_tiny_png())
-    aud = tmp_path / "voice.wav"
-    aud.write_bytes(b"RIFF")
-    return pl.Pipeline(), img, aud, tmp_path
-
-
-def _tiny_png() -> bytes:
-    import cv2
-
-    ok, buf = cv2.imencode(".png", np.full((8, 8, 3), 128, dtype=np.uint8))
-    assert ok
-    return buf.tobytes()
 
 
 def _cfg(tmp_path, **kw) -> RenderConfig:
@@ -127,6 +45,7 @@ def test_config_defaults_v2():
     assert cfg.matting_engine == "rvm"
     assert cfg.commercial_safe is False
     assert cfg.seed is None
+    assert cfg.output_format == "green_mp4"
 
 
 def test_commercial_safe_forces_birefnet(stubbed_pipeline, tmp_path):
@@ -197,6 +116,7 @@ def test_same_second_runs_get_distinct_ids(stubbed_pipeline, tmp_path):
     r2 = pipe.run(img, aud, cfg)
     assert r1["output"] != r2["output"]
     assert "warnings" in r1  # additive contract field always present
+    assert "outputs" in r1
 
 
 def test_sanitize_portrait_copies_known_ext(tmp_path):
@@ -204,7 +124,7 @@ def test_sanitize_portrait_copies_known_ext(tmp_path):
 
     pipe = Pipeline.__new__(Pipeline)  # no engine init needed
     src = tmp_path / "we%ird %04d name.PNG"
-    src.write_bytes(_tiny_png())
+    src.write_bytes(tiny_png_bytes())
     safe = pipe._sanitize_portrait(src, tmp_path)
     assert safe.name == "portrait.png"
     assert safe.read_bytes() == src.read_bytes()
@@ -237,10 +157,10 @@ def test_sanitize_portrait_rejects_garbage(tmp_path):
 
 def test_mux_failure_surfaces_warning_and_resets_clip(tmp_path):
     """Audio-mux failure must degrade to silent video WITH a warning, and the
-    compositor must own exactly two reset_clip calls (start + finally)."""
+    compositor driver must own exactly two reset_clip calls (start + finally)."""
     import imageio
 
-    from lipsync.green_compositor import composite_to_green
+    from lipsync.green_compositor import composite, iter_video_frames
 
     vid = tmp_path / "animated.mp4"
     w = imageio.get_writer(str(vid), fps=5, codec="libx264", macro_block_size=None)
@@ -249,10 +169,12 @@ def test_mux_failure_surfaces_warning_and_resets_clip(tmp_path):
     w.close()
 
     matte = FakeMatte()
-    out, warns = composite_to_green(
-        vid, matte, RenderConfig(), tmp_path / "missing_audio.wav",
-        tmp_path / "out.mp4", work_dir=tmp_path / "work",
+    frames, fps, total = iter_video_frames(vid)
+    outputs, warns = composite(
+        frames, fps, matte, RenderConfig(), tmp_path / "missing_audio.wav",
+        tmp_path / "out", run_id="testrun", work_dir=tmp_path / "work", total=total,
     )
+    out = outputs["green_mp4"]
     assert out.exists() and out.stat().st_size > 0
     assert len(warns) == 1 and "silent" in warns[0]
     assert matte.reset_calls == 2

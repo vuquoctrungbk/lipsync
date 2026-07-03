@@ -1,7 +1,7 @@
 ---
 phase: 6
 title: "MuseTalk Bake-off"
-status: pending
+status: blocked  # blocked-on-assets 2026-07-03: bake-off test set = real MC clip + portrait (plan dependency graph)
 effort: "2d (hard timebox)"
 priority: P2
 dependencies: [1]

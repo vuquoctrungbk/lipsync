@@ -42,6 +42,43 @@ def test_prepare_audio_missing_file(tmp_path):
         prepare_audio(tmp_path / "nope.wav", tmp_path)
 
 
+def _write_wav(path, seconds, rate=16000):
+    import wave
+
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(b"\x01\x00" * int(seconds * rate))
+
+
+def test_wav_duration_seconds_exact(tmp_path):
+    from lipsync.audio_preprocess import wav_duration_seconds
+
+    _write_wav(tmp_path / "a.wav", 1.5)
+    assert wav_duration_seconds(tmp_path / "a.wav") == pytest.approx(1.5)
+
+
+def test_audio_cap_fail_closed_without_ffprobe(tmp_path, monkeypatch):
+    """The cap must reject over-limit audio even when ffprobe is absent —
+    enforcement reads the DECODED wav, the probe is only a courtesy."""
+    import lipsync.audio_preprocess as ap
+
+    monkeypatch.setattr(ap, "probe_duration", lambda p: None)  # no ffprobe
+    _write_wav(tmp_path / "long.wav", 3.0)
+    with pytest.raises(AudioError, match="limit is 2s"):
+        prepare_audio(tmp_path / "long.wav", tmp_path / "work", max_seconds=2)
+
+
+def test_audio_cap_allows_under_limit_without_ffprobe(tmp_path, monkeypatch):
+    import lipsync.audio_preprocess as ap
+
+    monkeypatch.setattr(ap, "probe_duration", lambda p: None)
+    _write_wav(tmp_path / "short.wav", 1.0)
+    out = prepare_audio(tmp_path / "short.wav", tmp_path / "work", max_seconds=2)
+    assert out.exists()
+
+
 def test_hex_to_rgb():
     from app import _hex_to_rgb
     assert _hex_to_rgb("#00B140") == (0, 177, 64)

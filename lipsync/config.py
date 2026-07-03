@@ -23,8 +23,11 @@ TEMP_DIR = ROOT / "temp"
 # Standard chroma-key green (RGB). 0,177,64 is the common "digital green".
 DEFAULT_GREEN_RGB = (0, 177, 64)
 
-# Hard cap on input audio length (v1 OOM / runtime guard).
-MAX_AUDIO_SECONDS = 120
+# Hard cap on input audio length. 600s (user-confirmed ≤10 min) is served by
+# chunked facerender; clips ≤ SINGLE_SHOT_MAX_SECONDS take the proven v1
+# single-shot path unchanged.
+MAX_AUDIO_SECONDS = 600
+SINGLE_SHOT_MAX_SECONDS = 120
 
 
 @dataclass
@@ -60,6 +63,14 @@ class RenderConfig:
     green_rgb: tuple[int, int, int] = DEFAULT_GREEN_RGB
     fps: int = 25                     # SadTalker renders at 25 fps
     crf: int = 18                     # x264 quality (lower = better)
+
+    # What the render produces. `both` mattes once and feeds both encoders.
+    # webm_alpha = VP9 yuva420p with true transparency (drag into CapCut).
+    output_format: str = "green_mp4"  # green_mp4 | webm_alpha | both
+
+    # Long-audio chunking: seconds of KEPT frames per facerender segment.
+    # 0 = auto (sized from measured VRAM/RAM headroom at render time).
+    chunk_seconds: int = 0
 
     output_dir: Path = field(default_factory=lambda: OUTPUTS_DIR)
 

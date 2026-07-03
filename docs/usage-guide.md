@@ -29,7 +29,23 @@ to `outputs\lipsync_green_<timestamp>.mp4` and shown in the UI.
   works well with `full` framing. Avoid extreme angles / occluded faces (the face
   detector will reject "no face found").
 - **Audio:** any common format (wav/mp3/m4a). Converted to 16 kHz mono internally.
-  Limit is 120 s per clip (configurable in `lipsync/config.py`).
+  Limit is 600 s (10 min) per clip. Clips over 120 s render in checkpointed
+  segments: if the app crashes or is closed mid-render, the **Resume
+  interrupted render** button continues from the last finished segment
+  (compositing restarts — it is not checkpointable).
+
+## 3b. Using the WebM alpha output in CapCut
+
+Choose **WebM alpha (CapCut)** (or **Both**) as the output format. The `.webm`
+file carries true transparency (VP9 `alpha_mode=1`):
+
+1. Download the `.webm` from the app's file slot (regular video players show
+   it on black — that is normal; the alpha only appears in an editor).
+2. CapCut Desktop → import the `.webm` into your media, drop it on a track
+   ABOVE your background footage.
+3. The character appears directly over your background — no chroma key, no
+   green fringe. (First import pending one manual verification — if CapCut
+   ever rejects the file, fall back to the green MP4 + chroma key below.)
 
 ## 4. Compositing the green screen
 
