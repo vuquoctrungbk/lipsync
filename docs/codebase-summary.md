@@ -3,7 +3,10 @@
 ## Entry points
 
 - `app.py` — Gradio UI; builds inputs/settings, calls `Pipeline.run`, returns the
-  output video. Binds `127.0.0.1:7860`.
+  output video. Binds `127.0.0.1:7860`. **TTS delta:** audio source now a Tabs widget
+  ("Âm thanh có sẵn" / "Văn bản → Giọng nói"); `generate()` gained `(tts_wav, input_mode)`
+  args; 4-line source resolution logic routes text via TTS or file upload to the
+  existing `prepare_audio()` path.
 - `run_app.bat` — launcher (checks venv, runs `app.py`).
 - `scripts/setup_env.ps1` — idempotent environment bootstrap.
 
@@ -23,11 +26,27 @@
 | `chunked_facerender.py` | ~150+ | `plan_segments()` (VRAM/RAM-sized), `slice_coeff_mat()`, `render_segment()`, `iter_segment_frames()`. ±13-frame halo for `semantic_radius=13`. |
 | `run_manifest.py` | ~150+ | `sha1_file()`, `cfg_fingerprint()` (render-affecting fields only), `new_manifest()`, `write_manifest()`, `load_manifest()`, `pid_alive()`, `coeff_valid()`, `validate_segments()`, `find_resumable()`, `purge_stale_runs()`. Atomic writes; dead-owner adoption. |
 | `pipeline.py` | ~400+ | `Pipeline.run()` orchestration (audio → dispatch ≤120s single-shot or >120s chunked → matte + composite). `_chunked_animate()` (segment planning, coeff slicing, per-segment rendering, resumability). Keyed engine cache; render lock (serial Generate/Resume); portrait sanitization; timings. |
+| `tts_bridge.py` | ~80 | Subprocess wrapper for Vietnamese TTS. `synth_text()` (validate input, call `tts_cli.py`, parse JSON response, enforce 600s render cap). TTSError for user-facing messages; temp/tts cleanup. |
+| `tts_ui.py` | ~120 | Gradio tab "Văn bản → Giọng nối": textbox, duration counter, preset/clone voice dropdown, preview button ("Tạo & nghe thử"), preview invalidation on any change. Shares gpu-render lock. Degrades gracefully if `tools/tts/.venv` missing. |
 
 \* approximate; architecture supports modular growth per phase.
 
+## Tools: Text-to-speech (`tools/tts/`)
+
+| File / Module | Summary |
+|---|---|
+| `tts_cli.py` | Entry point: parses CLI args (engine, model, text/text-file, language, voice, voice-ref, voice-ref-text, out, seed); calls `engines/{engine}.py`; outputs one JSON per line (success: ok, out, duration_s, synth_s, load_s; failure: ok=false, kind, error); chunks text ≤380 chars. |
+| `engines/__init__.py` | Registry: `get_engine(name, model)` dispatcher; instantiates engine classes. |
+| `engines/base.py` | `TTSEngine` base class (load, synthesize, unload, get_voices); abstract. |
+| `engines/vieneu.py` | VieNeu-TTS v3 Turbo (Apache-2.0): load ONNX model (~9.7 s/call, 522 MB cached HF), synthesize (preset voices + zero-shot clone from .wav), measured RTF 1.06–1.17 (≈ realtime), CPU-only (torch-free). Inaudible Perth watermark on output. |
+| `benchmark_tts.py` | Measures model load time, synthesis RTF, VRAM/RAM footprint on a test corpus. |
+| `requirements.lock` | Pinned deps: vieneu==3.0.11, ONNX Runtime, HuggingFace tokenizers, numpy, scipy. |
+
+`tts_cli.py` is reached only via subprocess from `lipsync/tts_bridge.py` (main venv untouched).
+
 ## Scripts
 
+- `setup_tts_env.ps1` — idempotent installer for `tools/tts/.venv` (gates on $LASTEXITCODE).
 - `download_models.py` — fetches + size-verifies SadTalker core + GFPGAN aux
   weights from official GitHub releases into `models/sadtalker/`.
 - `cuda_smoke_test.py` — proves CUDA + fp16 matmul work (the RDP CUDA gate).
@@ -54,8 +73,10 @@
 ## Data / generated (gitignored)
 
 - `third_party/SadTalker/` — vendored source (pinned commit).
-- `models/` — checkpoints (SadTalker ~1.8 GB, GFPGAN aux ~0.7 GB, BiRefNet cache, RVM cache).
+- `models/` — checkpoints (SadTalker ~1.8 GB, GFPGAN aux ~0.7 GB, BiRefNet cache, RVM cache, VieNeu-TTS weights ~522 MB).
 - `tools/syncnet/` — SyncNet isolation venv (deps conflict with app venv).
+- `tools/tts/.venv/` — TTS isolation venv (VieNeu-TTS deps, ONNX Runtime, HuggingFace; pinned in `tools/tts/requirements.lock`).
+- `voices/vi/` — user voice clones (.wav + optional .txt transcript sidecar); PII-sensitive, gitignored.
 - `outputs/` — rendered MP4s. `temp/` — per-run work dirs (per-run-id scratch + intermediate files).
 
 ## Dependency notes (fragile pins)

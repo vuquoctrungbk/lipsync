@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import gradio as gr  # noqa: E402
 
-from lipsync import gradio_schema_compat  # noqa: E402
+from lipsync import gradio_schema_compat, tts_bridge, tts_ui  # noqa: E402
 from lipsync.config import DEFAULT_GREEN_RGB, OUTPUTS_DIR, RenderConfig  # noqa: E402
 from lipsync.hardware import detect_device  # noqa: E402
 from lipsync.pipeline import Pipeline  # noqa: E402
@@ -38,6 +38,9 @@ def _hex_to_rgb(value: str) -> tuple[int, int, int]:
         return (int(value[1:3], 16), int(value[3:5], 16), int(value[5:7], 16))
     return DEFAULT_GREEN_RGB
 
+
+# Audio-source tab label; the select handler matches on it (order-independent).
+_TTS_TAB_LABEL = "Văn bản → Giọng nói (TTS)"
 
 # UI label -> RenderConfig.output_format
 _FORMAT_CHOICES = {
@@ -70,7 +73,17 @@ def apply_preset(name):
 
 def generate(image, audio, face_size, preprocess, still, enhancer,
              expression, pose, green_hex, out_format, engine_label,
-             commercial, progress=gr.Progress()):
+             commercial, tts_wav=None, input_mode="upload",
+             progress=gr.Progress()):
+    # Audio source resolution: the TTS tab supplies its previewed wav, which
+    # then rides the exact same pipeline path as an uploaded file.
+    if input_mode == "tts":
+        if not tts_wav:
+            msg = "Bấm '🔊 Tạo & nghe thử' trong tab TTS trước khi Generate."
+            if not tts_bridge.tts_available():  # degraded tab has no such button
+                msg = tts_bridge.SETUP_HINT
+            raise gr.Error(msg)
+        audio = tts_wav
     if not image:
         raise gr.Error("Please upload a character image.")
     if not audio:
@@ -188,7 +201,13 @@ def build_ui() -> gr.Blocks:
         with gr.Row():
             with gr.Column():
                 image = gr.Image(label="Character image", type="filepath", sources=["upload"])
-                audio = gr.Audio(label="Voice audio (Vietnamese)", type="filepath", sources=["upload"])
+                # Two audio sources, one render path: uploaded file OR TTS preview.
+                input_mode = gr.State("upload")
+                with gr.Tabs() as audio_tabs:
+                    with gr.Tab("Âm thanh có sẵn"):
+                        audio = gr.Audio(label="Voice audio (Vietnamese)", type="filepath", sources=["upload"])
+                    with gr.Tab(_TTS_TAB_LABEL):
+                        tts_tab = tts_ui.build_tts_tab()
                 preset = gr.Dropdown(list(_PRESETS), value="Draft (256, no enhancer)",
                                      label="Quality preset (pre-fills the settings below)")
                 with gr.Accordion("Settings", open=False):
@@ -224,6 +243,13 @@ def build_ui() -> gr.Blocks:
 
         preset.change(apply_preset, inputs=[preset], outputs=[face_size, enhancer])
 
+        def _on_audio_tab(evt: gr.SelectData):
+            # Match by label (order-independent); index as fallback for gradio
+            # versions where SelectData.value is unset for Tabs.
+            return "tts" if (evt.value == _TTS_TAB_LABEL or evt.index == 1) else "upload"
+
+        audio_tabs.select(_on_audio_tab, inputs=None, outputs=[input_mode])
+
         # Shared concurrency_id: gradio 4 limits per-listener, so without it
         # Generate + Resume could render simultaneously (chdir race, double
         # GPU load). The Pipeline render lock backstops non-UI callers too.
@@ -231,7 +257,8 @@ def build_ui() -> gr.Blocks:
         run_btn.click(
             generate,
             inputs=[image, audio, face_size, preprocess, still, enhancer,
-                    expression, pose, green, out_format, engine, commercial],
+                    expression, pose, green, out_format, engine, commercial,
+                    tts_tab.tts_wav_state, input_mode],
             outputs=[out_video, out_file, status],
             concurrency_id="gpu-render", concurrency_limit=1,
         )
