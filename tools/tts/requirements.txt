@@ -1,0 +1,31 @@
+# Isolated TTS venv (tools/tts/.venv) — NEVER install these into the main .venv
+# (main venv is fragile-pinned; see requirements.txt at repo root + 2026-07-04 incident).
+#
+# VieNeu-TTS (Apache-2.0, Vietnamese specialist, zero-shot clone 3-5s, 10 bundled
+# preset voices). Torch-free ONNX CPU path — measured ~1.0x realtime on the
+# Xeon E5-2680 v4, zero VRAM contention with SadTalker renders.
+#
+# v2-family fallback (factory modes 'standard'/'turbo') needs `vieneu[gpu]`
+# extras — per D6 install it ONLY on documented v3-failure evidence.
+#
+# PINNED 2026-07-05 to the set verified by the phase-1 benchmark
+# (plans/reports/phase-01-tts-benchmark-rtx3060-report.md). Do not bump casually;
+# re-run tools/tts/benchmark_tts.py + the CLI smoke after any change.
+#
+# INSTALL FROM requirements.lock (full pip-freeze of the verified env — every
+# transitive pinned; scripts/setup_tts_env.ps1 does this). This file is the
+# human-readable intent doc; the lock is what reproduces the environment.
+vieneu==3.0.11
+# key transitive deps frozen (the ones that shape runtime behavior)
+onnxruntime==1.27.0
+numpy==2.4.6
+sea-g2p==0.7.18
+tokenizers==0.23.1
+soundfile==0.14.0
+soxr==1.1.0
+huggingface_hub==1.22.0
+perth==1.0.0
+PyYAML==6.0.3
+# pulled in by vieneu for its own optional web UI; harmless in this isolated venv
+gradio==6.19.0
+gradio_client==2.5.0

@@ -4,7 +4,24 @@
 
 A local, single-user desktop app that converts a still character image + a voice
 audio file into a green-screen talking-head video. Everything runs on the local
-GPU; no external services.
+GPU; no external services. Audio input can come from an uploaded file OR
+Vietnamese text synthesized by an isolated TTS subprocess.
+
+## Text-to-speech (TTS) pre-stage
+
+Optional Vietnamese text input (VieNeu-TTS v3 Turbo) runs in an isolated subprocess
+at `tools/tts/tts_cli.py` to avoid dependency conflicts. The subprocess is reached
+via `lipsync/tts_bridge.py` (main-venv wrapper) which enforces a 600 s render-time
+cap and cleans up temp files. CLI contract is JSON-based (one JSON object per line
+on stdout; exit code 1 on failure). Output: 48 kHz WAV file passed to the standard
+`prepare_audio()` path.
+
+**Isolation rationale:** VieNeu deps (ONNX Runtime, HuggingFace tokenizers) have
+pinned versions in `tools/tts/requirements.lock`; main venv is untouched
+(`tools/tts/.venv` only). This mirrors the `tools/syncnet/` precedent.
+
+**Voices:** 10 SDK-bundled Vietnamese presets + zero-shot clone from user-supplied
+5–10 s samples (refs cached at `voices/vi/`, gitignored).
 
 ## Data flow
 
@@ -12,10 +29,14 @@ GPU; no external services.
               ┌────────────┐
  image ─────▶ │            │
  audio ─────▶ │  app.py    │  Gradio UI (127.0.0.1:7860)
-              │  (UI)      │
-              └─────┬──────┘
-                    ▼
-            lipsync/pipeline.py  ── orchestrates stages, caches engines (time+uuid6 run IDs)
+ text ──┐     │  (UI)      │
+        │     └─────┬──────┘
+        │           ▼
+        │   lipsync/pipeline.py  ── orchestrates stages, caches engines (time+uuid6 run IDs)
+        │           │
+        └──▶ tools/tts/tts_cli.py (isolated subprocess, JSON protocol)
+            ├─ VieNeu-TTS v3 Turbo (ONNX, 48 kHz)
+            └─ WAV output ──▶ prepare_audio() [re-enters pipeline]
                     │
    ┌────────────────┼───────────────────────────┐
    ▼                ▼                             ▼
@@ -44,6 +65,8 @@ audio_preprocess  animation_sadtalker      matting_engine + green_compositor
 | `chunked_facerender.py` | `plan_segments()` (sized by free VRAM/RAM), `slice_coeff_mat()`, `render_segment()`, `iter_segment_frames()`. ±13-frame halo overlap for `semantic_radius=13` conditioning. |
 | `run_manifest.py` | Atomic manifest writes (temp + os.replace). Coeff SHA1+rows binding, config fingerprint, dead-owner adoption, `latest_resumable()` for resume button. |
 | `pipeline.py` | Orchestrate: prepare audio → dispatch (≤120s single-shot or >120s chunked) → matte + composite. Keyed engine cache (engine+precision); render lock (serial Generate/Resume); portrait sanitization. |
+| `tts_bridge.py` | Subprocess wrapper for `tools/tts/tts_cli.py`. Enforces 600 s render cap (fail-closed via existing `wav_duration_seconds`), captures JSON response, cleans up temp files >2 days old, raises `TTSError` for Vietnamese-specific messages. |
+| `tts_ui.py` | Gradio tab "Văn bản → Giọng nối" (Text → Voice): textbox + duration counter, preset/clone dropdown, MANDATORY preview ("Tạo & nghe thử") before Generate. Any text/voice/engine/ref change invalidates preview. Shares render concurrency with gpu-render lock. Degrades to setup instructions if `tools/tts/.venv` absent. |
 
 ## Key design decisions
 

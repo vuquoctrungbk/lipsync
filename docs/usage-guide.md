@@ -34,6 +34,46 @@ to `outputs\lipsync_green_<timestamp>.mp4` and shown in the UI.
   interrupted render** button continues from the last finished segment
   (compositing restarts — it is not checkpointable).
 
+## 3a. Vietnamese text input (TTS)
+
+Instead of uploading audio, use the **"Văn bản → Giọng nối" (Text → Voice)** tab
+to generate Vietnamese speech from text.
+
+### Setup
+
+Install the TTS environment once:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\setup_tts_env.ps1
+```
+
+This sets up an isolated venv at `tools/tts/.venv` with VieNeu-TTS v3 Turbo
+(Vietnamese specialist, ONNX Runtime, torch-free, ~9.7 s model load, measured
+1.06–1.17× realtime on CPU).
+
+### Workflow
+
+1. Enter Vietnamese text in the **"Nhập văn bản"** (Text input) box. The UI shows
+   estimated duration (characters ÷ 17 ≈ seconds).
+2. Choose a voice:
+   - **Preset:** select from 10 SDK-bundled Vietnamese speakers (5 female: Ngọc Lan,
+     Mỹ Duyên, Trúc Ly, Ngọc Linh; 5 male: Gia Bảo, Thái Sơn, Đức Trí, Xuân Vĩnh,
+     Trọng Hữu, Bình An).
+   - **Clone:** upload a 5–10 second voice sample (`.wav`) from the speaker you want
+     to clone, optionally with a transcript (`.txt` sidecar). Clones require speaker
+     consent (clone refs are kept locally in `voices/vi/`, gitignored for privacy).
+3. Click **"Tạo & nghe thử"** (Generate & preview) to hear a sample. Any change to
+   text, voice, or engine invalidates the preview — click again to refresh.
+4. When satisfied, click **Generate** to start the lip-sync render.
+
+### Duration limit & text tips
+
+- Maximum: 600 seconds (≈10,000 characters).
+- For natural reading, **write numbers as words** (e.g., "2024" → "hai không hai tư"
+  or "nhìn bốn") so the TTS pronounces them correctly.
+- Text is automatically chunked at ≤380 characters (sentence boundaries) with 250 ms
+  silence joins to keep VRAM footprint flat during synthesis.
+
 ## 3b. Using the WebM alpha output in CapCut
 
 Choose **WebM alpha (CapCut)** (or **Both**) as the output format. The `.webm`

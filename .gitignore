@@ -10,6 +10,8 @@ __pycache__/
 third_party/
 # SyncNet validation harness working dir (cloned repo + isolated venv + weights)
 tools/syncnet/
+# TTS isolated venv only — tools/tts/ code itself IS tracked
+tools/tts/.venv/
 
 # Model checkpoints (downloaded at setup, multi-GB)
 models/
@@ -31,6 +33,9 @@ temp/
 *.mp3
 *.webm
 !assets/**
+# voices/ stays LOCAL-ONLY on purpose: it holds user clone references (real
+# people's voices — PII). TTS preset voices ship inside the vieneu wheel, so
+# nothing under voices/ needs committing. (Review finding 2026-07-05.)
 
 # OS / editor
 Thumbs.db

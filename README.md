@@ -3,6 +3,7 @@
 Turn **one still character image + a voice audio file** into a **lip-synced talking-head video on a solid green background**, ready to chroma-key into other videos. 100% local — no paid APIs, no cloud.
 
 - **Animation:** [SadTalker](https://github.com/OpenTalker/SadTalker) (Apache-2.0) — natural head motion + blinks + lip-sync from a single image.
+- **Text → Speech (optional input mode):** [VieNeu-TTS](https://github.com/pnnbao97/VieNeu-TTS) v3 Turbo (Apache-2.0) — type Vietnamese text instead of uploading audio; 10 bundled preset voices + zero-shot voice cloning from a 5–10 s sample. Runs torch-free (ONNX) on CPU in an isolated venv (`tools/tts/`), ≈ realtime.
 - **Matting:** [RobustVideoMatting](https://github.com/PeterL1n/RobustVideoMatting) (GPL-3.0, default — fast + temporally stable, personal use) or [BiRefNet](https://github.com/ZhengPeng7/BiRefNet) (MIT — set `commercial_safe=True` to force it). RVM is loaded via torch.hub pinned to commit `53d74c68…` (weights cached in `models/rvm`, ~15 MB on first run; checkpoint sha256 `3c7c1d92…4f8`).
 - **Compositing/encode:** ffmpeg → solid green MP4.
 - **UI:** Gradio (local, single-user).
@@ -21,7 +22,10 @@ Turn **one still character image + a voice audio file** into a **lip-synced talk
 # 1. One-time setup: venv + PyTorch (CUDA 12.1) + deps + SadTalker + checkpoints (~3 GB)
 powershell -ExecutionPolicy Bypass -File scripts\setup_env.ps1
 
-# 2. Launch the app (opens http://127.0.0.1:7860)
+# 2. (Optional) TTS input mode: isolated venv + Vietnamese voice model (~522 MB on first synth)
+powershell -ExecutionPolicy Bypass -File scripts\setup_tts_env.ps1
+
+# 3. Launch the app (opens http://127.0.0.1:7860)
 run_app.bat
 ```
 
@@ -30,7 +34,9 @@ Then upload a character image + a voice audio file, click **Generate**, and down
 ## How it works
 
 ```
-image + audio (≤600 s)
+image + audio (≤600 s)            audio = uploaded file  OR  TTS tab:
+                                   text -> VieNeu v3 Turbo (isolated venv,
+                                   subprocess) -> preview wav -> same path
    -> ffmpeg: audio -> 16 kHz mono WAV (length cap enforced from the decoded wav)
    -> SadTalker: face detect -> 3DMM -> audio2coeff ONCE (full audio)          [fp32]
       -> facerender: single-shot ≤120 s, else ±13-frame halo-overlapped
@@ -58,6 +64,7 @@ Matting is **required**: SadTalker keeps the source image's background, so the c
 | Matting engine | RVM | RVM = fast + temporally stable (GPL-3, personal use); BiRefNet = MIT, slower |
 | Commercial-safe mode | off | forces BiRefNet; GPL RVM is never loaded |
 | Output format | Green MP4 | WebM alpha (CapCut, true transparency) or Both — one matte pass either way |
+| Audio source | Upload | Tab "Văn bản → Giọng nói": type text → pick a preset voice or clone from a 5–10 s sample → **Tạo & nghe thử** (preview is mandatory) → Generate uses that exact wav. TTS ≈ realtime on CPU, ~17 chars ≈ 1 s speech |
 
 Long clips: audio up to **600 s (10 min)**. Clips over 120 s render in
 checkpointed segments — if the app dies mid-render, **Resume interrupted
@@ -94,10 +101,12 @@ Import the MP4 and apply a chroma-key / "Ultra Key" (Premiere), "Keyer" (DaVinci
 
 ```
 app.py                 Gradio entrypoint
-lipsync/               application package (config, hardware, audio, animation, matting, compositor, pipeline)
-scripts/               setup_env.ps1, download_models.py, cuda_smoke_test.py
+lipsync/               application package (config, hardware, audio, animation, matting, compositor, pipeline, tts bridge/ui)
+scripts/               setup_env.ps1, setup_tts_env.ps1, download_models.py, cuda_smoke_test.py
 third_party/SadTalker  vendored SadTalker (cloned, pinned commit) — gitignored
+tools/tts/             isolated TTS venv + CLI (VieNeu, Apache-2.0); tools/syncnet = validation harness
 models/                checkpoints (downloaded) — gitignored
+voices/                your clone-reference audio (LOCAL ONLY — gitignored, personal data)
 outputs/               rendered videos
 tests/                 unit + opt-in E2E tests (RUN_E2E=1)
 docs/                  architecture, codebase summary, usage guide
@@ -105,4 +114,4 @@ docs/                  architecture, codebase summary, usage guide
 
 ## Licenses
 
-This build targets **personal (non-commercial) use**: the default matting engine, RobustVideoMatting, is **GPL-3.0**. For a commercial-safe run set `commercial_safe=True` in `RenderConfig` — that forces the MIT-licensed BiRefNet path and never loads RVM. All other runtime components (SadTalker Apache-2.0, BiRefNet MIT) are commercial-use-safe; see [NOTICE.md](NOTICE.md). No Wav2Lip/InsightFace/RMBG-2.0 weights are bundled.
+This build targets **personal (non-commercial) use**: the default matting engine, RobustVideoMatting, is **GPL-3.0**. For a commercial-safe run set `commercial_safe=True` in `RenderConfig` — that forces the MIT-licensed BiRefNet path and never loads RVM. All other runtime components (SadTalker Apache-2.0, BiRefNet MIT, VieNeu-TTS Apache-2.0) are commercial-use-safe; see [NOTICE.md](NOTICE.md). TTS output carries an inaudible Perth AI-watermark (SDK default). Clone giọng chỉ khi có sự đồng ý của chủ giọng — thư mục `voices/` là local-only (gitignored). No Wav2Lip/InsightFace/RMBG-2.0 weights are bundled.

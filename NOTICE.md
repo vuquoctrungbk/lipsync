@@ -14,6 +14,18 @@ flag, every component below permits commercial use.
 | BiRefNet-matting (commercial-safe matting) | ZhengPeng7/BiRefNet | MIT | Yes |
 | GFPGAN (optional enhancer) | TencentARC/GFPGAN | Apache-2.0 | Yes |
 | facexlib (face utils/weights) | xinntao/facexlib | Apache-2.0 | Yes |
+| VieNeu-TTS v3 Turbo (text → speech, optional input mode) | pnnbao97/VieNeu-TTS (`vieneu==3.0.11`, weights `pnnbao-ump/VieNeu-TTS-v3-Turbo` + `OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano`) | Apache-2.0 | Yes |
+
+Notes on TTS:
+- Runs in an ISOLATED venv (`tools/tts/.venv`, see `tools/tts/requirements.lock`) —
+  none of its dependencies enter the main app environment.
+- Generated speech carries an inaudible **Perth (Resemble AI) watermark** by
+  default (vieneu SDK behavior; `perth` package is BSD/MIT-family) — it marks
+  audio as AI-generated and does not affect quality.
+- The 10 bundled Vietnamese preset voices ship inside the `vieneu` wheel under
+  its Apache-2.0 license. User-supplied clone references live LOCALLY in
+  `voices/` (gitignored — treat other people's voices as personal data; clone
+  only with the speaker's consent).
 
 ## Key libraries
 
