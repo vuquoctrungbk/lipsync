@@ -57,5 +57,28 @@ huggingface_hub==0.21.4
 # (see lipsync/matting_rvm.py). Weights cache under models/rvm on first load
 # (needs internet once, ~15 MB). commercial_safe=True avoids it entirely.
 
-# --- UI ---
+# --- UI + web-serving stack ---
+# gradio 4.44.1 under-constrains its HTTP deps (e.g. only fastapi<1.0), so an
+# unpinned install drifts to versions that break launch: fastapi 0.13x +
+# starlette 1.x flip TemplateResponse arg order -> "unhashable type: 'dict'".
+# The whole serving cluster is pinned to the exact set verified to launch +
+# serve with gradio 4.44.1 / gradio_client 1.3.0. (gradio_client 1.3.0's
+# boolean-schema crash is handled in lipsync/gradio_schema_compat.py.)
+# Do not bump piecemeal — re-verify `python app.py` reaches HTTP 200 first.
 gradio==4.44.1
+gradio-client==1.3.0
+fastapi==0.112.2
+starlette==0.38.6
+uvicorn==0.49.0
+pydantic==2.13.4
+pydantic-core==2.46.4
+httpx==0.28.1
+httpcore==1.0.9
+h11==0.16.0
+anyio==4.13.0
+websockets==12.0
+orjson==3.11.9
+python-multipart==0.0.32
+aiofiles==23.2.1
+jinja2==3.1.6
+markupsafe==2.1.5

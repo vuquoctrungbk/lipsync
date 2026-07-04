@@ -14,9 +14,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import gradio as gr  # noqa: E402
 
+from lipsync import gradio_schema_compat  # noqa: E402
 from lipsync.config import DEFAULT_GREEN_RGB, OUTPUTS_DIR, RenderConfig  # noqa: E402
 from lipsync.hardware import detect_device  # noqa: E402
 from lipsync.pipeline import Pipeline  # noqa: E402
+
+# gradio_client 1.3.0 (bundled with gradio 4.44.1) crashes building API info on
+# boolean JSON-Schema nodes, which flooded the console and aborted launch().
+gradio_schema_compat.apply()
 
 _PIPE: Pipeline | None = None
 
