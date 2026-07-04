@@ -16,6 +16,10 @@ models/
 # facexlib/gfpgan runtime weight cache (CWD-relative default path)
 gfpgan/
 
+# Project docs & plans — kept local only (per user request 2026-07-04)
+docs/
+plans/
+
 # Runtime artifacts
 outputs/
 temp/
