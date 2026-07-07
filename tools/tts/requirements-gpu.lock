@@ -1,0 +1,23 @@
+# OPT-IN GPU extras for the isolated TTS venv — installed by
+#   scripts\setup_tts_env.ps1 -Gpu   (on TOP of requirements.lock)
+#
+# Enables VieNeu v3turbo's PyTorch/CUDA backend (device="cuda"). This is the
+# MINIMAL set v3turbo actually imports — deliberately NOT the full vieneu[gpu]
+# extra, which also pulls Windows-fragile lmdeploy / triton-windows /
+# llama-cpp-python for the OTHER GPU modes (fast/turbo-LMDeploy) that we don't use.
+#
+# Verified 2026-07-08 on RTX 3060 12GB (sm_86), driver 591.74 / CUDA 13.1:
+# torch.cuda.is_available() == True; CPU-ONNX path still works after install
+# (transformers pulls tokenizers 0.22.2, down from the base 0.23.1 — both OK).
+# +cu124 local tags force the CUDA wheels from the PyTorch index below.
+--extra-index-url https://download.pytorch.org/whl/cu124
+torch==2.6.0+cu124
+torchaudio==2.6.0+cu124
+transformers==5.13.0
+tokenizers==0.22.2
+safetensors==0.8.0
+regex==2026.6.28
+sympy==1.13.1
+mpmath==1.3.0
+networkx==3.6.1
+filelock==3.29.5

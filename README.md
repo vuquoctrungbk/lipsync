@@ -3,7 +3,7 @@
 Turn **one still character image + a voice audio file** into a **lip-synced talking-head video on a solid green background**, ready to chroma-key into other videos. 100% local — no paid APIs, no cloud.
 
 - **Animation:** [SadTalker](https://github.com/OpenTalker/SadTalker) (Apache-2.0) — natural head motion + blinks + lip-sync from a single image.
-- **Text → Speech (optional input mode):** [VieNeu-TTS](https://github.com/pnnbao97/VieNeu-TTS) v3 Turbo (Apache-2.0) — type Vietnamese text instead of uploading audio; 10 bundled preset voices + zero-shot voice cloning from a 5–10 s sample. Runs torch-free (ONNX) on CPU in an isolated venv (`tools/tts/`), ≈ realtime.
+- **Text → Speech (optional input mode):** [VieNeu-TTS](https://github.com/pnnbao97/VieNeu-TTS) v3 Turbo (Apache-2.0) — type Vietnamese text instead of uploading audio; 10 bundled preset voices + zero-shot voice cloning from a 5–10 s sample. Runs torch-free (ONNX) on CPU in an isolated venv (`tools/tts/`), ≈ realtime. Optional GPU (PyTorch) device via `-Gpu` setup — note: on the RTX 3060 the CPU path is actually ~1.5× faster (the model is autoregressive), so GPU is opt-in, not the default.
 - **Matting:** [RobustVideoMatting](https://github.com/PeterL1n/RobustVideoMatting) (GPL-3.0, default — fast + temporally stable, personal use) or [BiRefNet](https://github.com/ZhengPeng7/BiRefNet) (MIT — set `commercial_safe=True` to force it). RVM is loaded via torch.hub pinned to commit `53d74c68…` (weights cached in `models/rvm`, ~15 MB on first run; checkpoint sha256 `3c7c1d92…4f8`).
 - **Compositing/encode:** ffmpeg → solid green MP4.
 - **UI:** Gradio (local, single-user).
@@ -24,6 +24,8 @@ powershell -ExecutionPolicy Bypass -File scripts\setup_env.ps1
 
 # 2. (Optional) TTS input mode: isolated venv + Vietnamese voice model (~522 MB on first synth)
 powershell -ExecutionPolicy Bypass -File scripts\setup_tts_env.ps1
+#    ...add -Gpu for the optional PyTorch/CUDA device (~2.5 GB; CPU is faster on the 3060):
+#    powershell -ExecutionPolicy Bypass -File scripts\setup_tts_env.ps1 -Gpu
 
 # 3. Launch the app (opens http://127.0.0.1:7860)
 run_app.bat

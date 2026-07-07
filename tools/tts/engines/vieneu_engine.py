@@ -12,7 +12,9 @@ lives behind other factory modes ('standard'/'turbo') which REQUIRE the
 `vieneu[gpu]` extras — per D6 it is installed only on documented v3-failure
 evidence, so this engine deliberately exposes just "v3turbo".
 
-Torch-free ONNX CPU inference — zero VRAM contention with SadTalker renders.
+Device (2026-07-08): CPU = torch-free ONNX (default, zero VRAM contention).
+GPU = the SDK's PyTorch backend, which needs torch+torchaudio in this venv
+(opt-in: scripts/setup_tts_env.ps1 -Gpu). device="auto" lets the SDK pick.
 """
 from __future__ import annotations
 
@@ -27,7 +29,7 @@ class VieNeuEngine(BaseEngine):
     name = "vieneu"
     models = ("v3turbo",)
 
-    def __init__(self, model: str):
+    def __init__(self, model: str, device: str = "cpu"):
         if model in ("v2", "standard", "turbo"):
             raise TTSEngineError(
                 KIND_ENGINE_LOAD,
@@ -35,7 +37,7 @@ class VieNeuEngine(BaseEngine):
                 "vieneu[gpu] extras and is installed only on documented v3 "
                 "failure evidence — see the phase-1 benchmark report.",
             )
-        super().__init__(model)
+        super().__init__(model, device)
 
     def load(self) -> None:
         try:
@@ -45,11 +47,37 @@ class VieNeuEngine(BaseEngine):
                 KIND_ENGINE_LOAD,
                 f"vieneu SDK not importable in tools/tts/.venv: {exc}",
             ) from exc
-        # device/backend 'auto' -> ONNX Runtime on CPU in the minimal install.
+        # GPU needs torch (the SDK's PyTorch backend). Fail early with an
+        # actionable message instead of a deep SDK ImportError/CUDA crash.
+        if self.device == "cuda":
+            self._require_cuda()
+        # device -> SDK: 'cpu' forces torch-free ONNX; 'cuda' forces PyTorch;
+        # 'auto' lets the SDK choose (torch+cuda -> GPU, else CPU ONNX).
         # First load downloads the backbone + MOSS audio tokenizer from HF
         # (HF_HOME is repo-local, set by tts_cli.py before this import).
-        self._tts = Vieneu(mode="v3turbo")
+        self._tts = Vieneu(mode="v3turbo", device=self.device)
         self._sr = int(getattr(self._tts, "sample_rate", 0) or _V3_SR)
+        # Report the RESOLVED device (SDK backend 'pytorch' == GPU, 'onnx' == CPU)
+        # so JSON is truthful even when the caller passed device='auto'.
+        self.backend_device = ("cuda" if getattr(self._tts, "backend", "") == "pytorch"
+                               else "cpu")
+
+    @staticmethod
+    def _require_cuda() -> None:
+        try:
+            import torch
+        except ImportError as exc:
+            raise TTSEngineError(
+                KIND_ENGINE_LOAD,
+                "GPU cần torch trong venv TTS. Cài: powershell -ExecutionPolicy "
+                "Bypass -File scripts\\setup_tts_env.ps1 -Gpu",
+            ) from exc
+        if not torch.cuda.is_available():
+            raise TTSEngineError(
+                KIND_ENGINE_LOAD,
+                "torch đã cài nhưng CUDA không khả dụng (driver/GPU?) — "
+                "dùng CPU hoặc kiểm tra lại GPU.",
+            )
 
     def list_presets(self) -> list[str]:
         """Named preset voices bundled with the SDK (Apache-2.0)."""

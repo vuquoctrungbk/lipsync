@@ -19,7 +19,18 @@ CLONE_SENTINEL = "— Clone từ audio tải lên (5–10s) —"
 
 # Single engine this round (D2 amendment: Chatterbox has no Vietnamese; the
 # dropdown stays so round 2 just appends choices).
-ENGINE_CHOICES = {"VieNeu v3 Turbo (48kHz, chạy CPU)": ("vieneu", "v3turbo")}
+ENGINE_CHOICES = {"VieNeu v3 Turbo (48kHz)": ("vieneu", "v3turbo")}
+
+# Device selector. GPU is only OFFERED when torch+CUDA are present in the TTS
+# venv (opt-in `-Gpu` setup); CPU stays the default and needs nothing extra.
+# Honest label: benchmark 2026-07-08 on the RTX 3060 found the ONNX-CPU path
+# ~1.5x FASTER than the v3turbo PyTorch/GPU path (autoregressive codec-LLM,
+# kernel-launch-bound on a mid GPU) — so GPU is NOT sold as "faster".
+_DEVICE_CPU = "CPU (nhẹ, mặc định)"
+_DEVICE_GPU = "GPU (PyTorch)"
+_DEVICE_MAP = {_DEVICE_CPU: "cpu", _DEVICE_GPU: "cuda"}
+_GPU_INFO = ("Trên GPU này CPU thường NHANH hơn (RTF ~1.15 vs ~1.9 — xem "
+             "benchmark). Chọn GPU nếu muốn giải phóng CPU hoặc so chất lượng.")
 
 # Reference-clip sanity window (seconds): hard reject outside 2-30, advise 3-15.
 _REF_HARD_MIN, _REF_HARD_MAX = 2.0, 30.0
@@ -63,15 +74,17 @@ def _resolve_voice(voice_label: str, ref_path: str | None,
     raise gr.Error(f"Không tìm thấy giọng: {voice_label}")
 
 
-def _preview(text, engine_label, voice_label, ref_audio, ref_transcript,
-             progress=gr.Progress()):
+def _preview(text, engine_label, device_label, voice_label, ref_audio,
+             ref_transcript, progress=gr.Progress()):
     engine, model = ENGINE_CHOICES.get(engine_label, ("vieneu", "v3turbo"))
+    device = _DEVICE_MAP.get(device_label, "cpu")
     voice = _resolve_voice(voice_label, ref_audio, ref_transcript)
     est = tts_bridge.estimate_seconds(text or "")
-    progress(0.1, desc=f"đang tổng hợp giọng nói (~{max(est, 5):.0f}s audio, "
-                       "tốc độ ≈ realtime trên CPU)")
+    hw = "GPU" if device == "cuda" else "CPU (≈ realtime)"
+    progress(0.1, desc=f"đang tổng hợp giọng nói (~{max(est, 5):.0f}s audio, {hw})")
     try:
-        wav = tts_bridge.synthesize(text, voice, engine=engine, model=model)
+        wav = tts_bridge.synthesize(text, voice, engine=engine, model=model,
+                                    device=device)
     except tts_bridge.TTSError as exc:  # clean Vietnamese toast
         raise gr.Error(exc.user_message) from exc
     try:  # cosmetic only — synthesize() already validated this wav
@@ -123,6 +136,12 @@ def build_tts_tab() -> TTSTabHandles:
                            label="Ngôn ngữ (đa ngôn ngữ ở vòng nâng cấp sau)")
     engine = gr.Dropdown(list(ENGINE_CHOICES), value=next(iter(ENGINE_CHOICES)),
                          label="Engine TTS")
+    gpu_on = tts_bridge.gpu_available()
+    device = gr.Radio(
+        [_DEVICE_CPU] + ([_DEVICE_GPU] if gpu_on else []),
+        value=_DEVICE_CPU, label="Thiết bị",
+        info=_GPU_INFO if gpu_on else
+        "Bật GPU: chạy `scripts\\setup_tts_env.ps1 -Gpu` rồi khởi động lại app.")
     voice = gr.Dropdown(voice_choices, value=voice_choices[0], label="Giọng đọc")
     ref_audio = gr.Audio(label="Audio mẫu để clone (5–10s, giọng cần bắt chước)",
                          type="filepath", sources=["upload"], visible=False)
@@ -141,14 +160,14 @@ def build_tts_tab() -> TTSTabHandles:
                           preview_audio, status])
     text.change(lambda t: (_counter_md(t), *_invalidate_preview()), inputs=[text],
                 outputs=[counter, tts_wav_state, preview_audio, status])
-    for comp in (engine, ref_audio, ref_transcript):
+    for comp in (engine, device, ref_audio, ref_transcript):
         comp.change(_invalidate_preview, inputs=None,
                     outputs=[tts_wav_state, preview_audio, status])
-    # Shares the render queue: TTS is CPU-heavy (ONNX) and the render's
-    # ffmpeg/paste-back stages are too — one at a time keeps both predictable.
+    # Shares the render queue: TTS work (ONNX on CPU or the GPU PyTorch path)
+    # and the render's ffmpeg/paste-back + GPU stages must not overlap.
     preview_btn.click(
         _preview,
-        inputs=[text, engine, voice, ref_audio, ref_transcript],
+        inputs=[text, engine, device, voice, ref_audio, ref_transcript],
         outputs=[preview_audio, status, tts_wav_state],
         concurrency_id="gpu-render", concurrency_limit=1,
     )

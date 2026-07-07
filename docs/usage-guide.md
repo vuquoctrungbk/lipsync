@@ -51,6 +51,19 @@ This sets up an isolated venv at `tools/tts/.venv` with VieNeu-TTS v3 Turbo
 (Vietnamese specialist, ONNX Runtime, torch-free, ~9.7 s model load, measured
 1.06–1.17× realtime on CPU).
 
+**Optional GPU device** — add `-Gpu` to install the PyTorch/CUDA backend
+(~2.5 GB torch into the same isolated venv):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\setup_tts_env.ps1 -Gpu
+```
+
+After this a **"Thiết bị: CPU | GPU"** selector appears in the tab. Note: on the
+RTX 3060 the CPU-ONNX path is ~1.5× **faster** than GPU (v3turbo is an
+autoregressive model, kernel-launch-bound on a mid GPU), so **CPU stays the
+default** — pick GPU only to free the CPU or to A/B quality. Benchmark:
+`plans/reports/phase-05-tts-gpu-benchmark-and-verdict-report.md`.
+
 ### Workflow
 
 1. Enter Vietnamese text in the **"Nhập văn bản"** (Text input) box. The UI shows

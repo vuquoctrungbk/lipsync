@@ -4,16 +4,19 @@ Called by lipsync/tts_bridge.py via subprocess (pattern: scripts/sync_metrics.py
 Contract (FROZEN — phase-01 plan doc):
 
   tools/tts/.venv/Scripts/python.exe tools/tts/tts_cli.py \
-    --engine vieneu --model v3turbo --text-file <utf8.txt> --language vi \
+    --engine vieneu --model v3turbo [--device cpu|cuda|auto] \
+    --text-file <utf8.txt> --language vi \
     (--voice "<preset name>" | --voice-ref <ref.wav> [--voice-ref-text "<transcript>"]) \
     --out <out.wav> [--seed N]
 
 Voice: EITHER a named SDK preset (--voice, see engine list_presets) OR a
 reference wav for zero-shot cloning (--voice-ref, transcript optional).
+Device: cpu (default, torch-free ONNX) | cuda (PyTorch, needs the -Gpu extras) |
+auto (SDK picks). GPU is opt-in; CPU keeps today's behavior exactly.
 
 Last stdout line is exactly one JSON object:
   ok:    {"ok": true, "out": "...", "duration_s": 12.3, "engine": "vieneu",
-          "model": "v3turbo", "synth_s": 8.1, "load_s": 4.2, "chunks": 3}
+          "model": "v3turbo", "device": "cpu", "synth_s": 8.1, "load_s": 4.2, "chunks": 3}
   error: {"ok": false, "kind": "input|engine_load|synthesis", "error": "..."} + exit 1
 
 All logs go to stderr; stdout stays machine-parseable.
@@ -107,6 +110,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Synthesize speech (isolated TTS venv).")
     ap.add_argument("--engine", required=True, choices=sorted(ENGINES))
     ap.add_argument("--model", default="v3turbo")
+    ap.add_argument("--device", default="cpu", choices=("cpu", "cuda", "auto"))
     ap.add_argument("--text-file", required=True)
     ap.add_argument("--language", default="vi")
     ap.add_argument("--voice", default=None, help="named SDK preset voice")
@@ -136,7 +140,7 @@ def main() -> None:
         np.random.seed(args.seed)
 
     try:
-        engine = ENGINES[args.engine](model=args.model)
+        engine = ENGINES[args.engine](model=args.model, device=args.device)
     except TTSEngineError as exc:
         fail(exc.kind, str(exc))
 
@@ -150,8 +154,8 @@ def main() -> None:
         traceback.print_exc(file=sys.stderr)
         fail("engine_load", f"{type(exc).__name__}: {exc}")
     load_s = time.time() - t0
-    log(f"[tts] engine={args.engine} model={args.model} loaded in {load_s:.1f}s; "
-        f"{len(chunks)} chunk(s)")
+    log(f"[tts] engine={args.engine} model={args.model} device={args.device} "
+        f"loaded in {load_s:.1f}s; {len(chunks)} chunk(s)")
 
     t1 = time.time()
     pieces: list[np.ndarray] = []
@@ -192,6 +196,7 @@ def main() -> None:
         "duration_s": round(len(audio) / sr, 2),
         "engine": args.engine,
         "model": args.model,
+        "device": getattr(engine, "backend_device", args.device),
         "voice": args.voice or f"clone:{voice_ref.name}",
         "synth_s": round(synth_s, 1),
         "load_s": round(load_s, 1),

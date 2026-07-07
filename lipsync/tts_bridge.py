@@ -79,6 +79,60 @@ def tts_available() -> bool:
     return TTS_PYTHON.exists()
 
 
+_gpu_cache: bool | None = None
+
+
+def _gpu_probe_file() -> Path:
+    """Persisted probe result, co-located in the (gitignored) TTS venv so it is
+    naturally discarded when the venv is rebuilt."""
+    return TTS_PYTHON.parent / ".gpu_probe"
+
+
+def gpu_available() -> bool:
+    """True when the TTS venv has torch + a usable CUDA GPU (opt-in -Gpu setup).
+
+    Probes the ISOLATED venv in a subprocess (its torch is invisible to the main
+    venv). The result is memoized in-process AND persisted to a file keyed on the
+    venv python's mtime, so only the FIRST launch after a `-Gpu` (re)install pays
+    the ~15-20s cold `import torch`; later launches read the stamp. Never raises.
+    CPU-only installs hit a fast ImportError. Never raises.
+    """
+    global _gpu_cache
+    if _gpu_cache is not None:
+        return _gpu_cache
+    _gpu_cache = False
+    if not tts_available():
+        return False
+    try:
+        stamp = str(int(TTS_PYTHON.stat().st_mtime))
+    except OSError:
+        stamp = ""
+    probe_file = _gpu_probe_file()
+    if stamp:  # trust a persisted result only for the current venv python
+        try:
+            cached = probe_file.read_text(encoding="utf-8").strip()
+            if cached.startswith(f"{stamp}:"):
+                _gpu_cache = cached.endswith(":1")
+                return _gpu_cache
+        except OSError:
+            pass
+    try:
+        proc = subprocess.run(
+            [str(TTS_PYTHON), "-c",
+             "import torch,sys; sys.stdout.write('1' if torch.cuda.is_available() else '0')"],
+            capture_output=True, text=True, timeout=30,
+            env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+        _gpu_cache = proc.returncode == 0 and proc.stdout.strip().endswith("1")
+    except Exception:
+        _gpu_cache = False
+    if stamp:  # best-effort persist; a read-only venv just re-probes next time
+        try:
+            probe_file.write_text(f"{stamp}:{'1' if _gpu_cache else '0'}", encoding="utf-8")
+        except OSError:
+            pass
+    return _gpu_cache
+
+
 def estimate_seconds(text: str) -> float:
     """Rough speech duration for the UI counter (measured vi speaking rate)."""
     return len(text.strip()) / CHARS_PER_SECOND
@@ -134,9 +188,9 @@ def _parse_last_json_line(stdout: str) -> dict | None:
 
 
 def synthesize(text: str, voice: Voice, *, engine: str = "vieneu",
-               model: str = "v3turbo", language: str = "vi",
-               out_dir: Path | None = None, timeout_s: int = 1800,
-               seed: int | None = None) -> Path:
+               model: str = "v3turbo", device: str = "cpu",
+               language: str = "vi", out_dir: Path | None = None,
+               timeout_s: int = 1800, seed: int | None = None) -> Path:
     """Text -> wav via the isolated TTS CLI. Returns the wav path.
 
     Raises TTSError (Vietnamese user message) on any failure. The 600 s cap is
@@ -166,7 +220,7 @@ def synthesize(text: str, voice: Voice, *, engine: str = "vieneu",
     text_file.write_text(text, encoding="utf-8")
 
     cmd = [str(TTS_PYTHON), str(TTS_CLI),
-           "--engine", engine, "--model", model,
+           "--engine", engine, "--model", model, "--device", device,
            "--text-file", str(text_file), "--language", language,
            "--out", str(out_wav)]
     if voice.preset is not None:  # `is None` everywhere: ""-preset routes to CLI's own XOR error
