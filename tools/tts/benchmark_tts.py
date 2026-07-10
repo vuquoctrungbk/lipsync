@@ -52,8 +52,8 @@ SENTENCES = {
 
 
 def bench_model(model: str, voice: str | None, voice_ref: str | None,
-                voice_ref_text: str | None) -> dict:
-    engine = ENGINES["vieneu"](model=model)
+                voice_ref_text: str | None, device: str = "cpu") -> dict:
+    engine = ENGINES["vieneu"](model=model, device=device)
     t0 = time.time()
     engine.load()
     load_s = time.time() - t0
@@ -71,7 +71,8 @@ def bench_model(model: str, voice: str | None, voice_ref: str | None,
         synth_s = time.time() - t1
         audio = np.concatenate(pieces)
         audio_s = len(audio) / sr
-        wav = OUT_DIR / f"bench_{model}_{key}.wav"
+        resolved = getattr(engine, "backend_device", engine.device)
+        wav = OUT_DIR / f"bench_{model}_{key}_{resolved}.wav"
         write_wav(wav, audio, sr)
         rtf = synth_s / audio_s if audio_s else float("inf")
         runs.append({"sentence": key, "chars": len(sentence), "chunks": len(chunks),
@@ -88,16 +89,19 @@ def main() -> None:
     ap.add_argument("--voice-ref", default=None, help="clone from wav instead of preset")
     ap.add_argument("--voice-ref-text", default=None)
     ap.add_argument("--models", nargs="+", default=["v3turbo"])
+    ap.add_argument("--device", default="cpu", choices=("cpu", "cuda", "auto"))
     args = ap.parse_args()
     voice = None if args.voice_ref else args.voice
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    results = {"machine": "RTX 3060 12GB / Xeon E5-2680 v4 (CPU-ONNX path)",
+    results = {"machine": f"RTX 3060 12GB / Xeon E5-2680 v4 (device={args.device})",
+               "device": args.device,
                "voice": voice or f"clone:{args.voice_ref}", "models": []}
     for model in args.models:
         try:
             results["models"].append(
-                bench_model(model, voice, args.voice_ref, args.voice_ref_text))
+                bench_model(model, voice, args.voice_ref, args.voice_ref_text,
+                            device=args.device))
         except Exception as exc:  # keep going: one model failing IS a result
             import traceback
             traceback.print_exc(file=sys.stderr)

@@ -53,7 +53,17 @@ Cook session executed plan/260705-0028-tts-text-input-vietnamese-first/ overnigh
 
 Nothing committed yet. Traps learned: (1) PowerShell CWD drifted mid-session — use absolute paths for venv; (2) vieneu presets load only after full model load — pinning wheel makes hardcoding safe; (3) marketing pages ≠ license/language docs — verify claims vs HF card + repo README.
 
+## Addendum 3: TTS GPU device option (2026-07-08) — shipped, but CPU is faster on the 3060
+
+User requested TTS GPU acceleration. Delivered `--device {cpu|cuda|auto}` CLI thread→bridge→Vieneu(device=...), default CPU (no behavior change). Minimal torch install: setup_tts_env.ps1 -Gpu adds torch 2.6.0+cu124, torchaudio, transformers 5.13.0 to isolated tools/tts venv only (not full vieneu[gpu], which pulls Windows-fragile lmdeploy/triton). GPU probe subprocess cached to .gpu_probe (keyed on venv Python mtime) to avoid ~15s cold torch import on every launch.
+
+**Key finding**: GPU is SLOWER than CPU on RTX 3060. v3turbo is autoregressive codec-LLM (MOSS token-by-token), kernel-launch-bound on mid-GPU; CPU ONNX engine is optimized. RTF: GPU ~1.87–2.1 fp32 (1.68 fp16 probe) vs CPU ~1.06–1.17; GPU load 16s vs 9.7s. Solution: CPU stays default, GPU opt-in, UI labels "GPU (PyTorch)" with benchmark note—no false speedup claim.
+
+Verified: 83 tests pass (+5 device tests), real GPU synth exit 0, HTTP 200 launch clean, main venv untouched, no critical/high findings in code review. Requirements-gpu.lock generated; gpu_available() detection persistent; CPU-ONNX path confirmed after transformers downgrade (tokenizers 0.23.1→0.22.2, both OK).
+
+**Lesson**: "allow GPU" ≠ "GPU is faster"—benchmark before assuming. Honest labeling beats a misleading speedup claim. Shipped, not yet committed.
+
 ---
 
 **Status**: DONE
-**Summary**: Gradio launch fixed (app.py stable); TTS design confirmed and implementation plan created with 4-phase dependency chain.
+**Summary**: Gradio launch fixed (app.py stable); TTS design confirmed, full feature cooked (phase 4 awaiting user listening verdict); GPU device option shipped with honest benchmarking and CPU as default.

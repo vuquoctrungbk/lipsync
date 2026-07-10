@@ -19,6 +19,10 @@ flag, every component below permits commercial use.
 Notes on TTS:
 - Runs in an ISOLATED venv (`tools/tts/.venv`, see `tools/tts/requirements.lock`) —
   none of its dependencies enter the main app environment.
+- CPU is the default (torch-free ONNX). The optional GPU device (opt-in
+  `scripts\setup_tts_env.ps1 -Gpu`, pins in `tools/tts/requirements-gpu.lock`)
+  adds PyTorch (BSD-3) + torchaudio + transformers (Apache-2.0) into the SAME
+  isolated venv — still nothing enters the main environment.
 - Generated speech carries an inaudible **Perth (Resemble AI) watermark** by
   default (vieneu SDK behavior; `perth` package is BSD/MIT-family) — it marks
   audio as AI-generated and does not affect quality.

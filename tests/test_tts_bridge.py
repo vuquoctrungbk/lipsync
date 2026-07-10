@@ -82,6 +82,60 @@ def test_synthesize_success_builds_contract_cmd(bridged, monkeypatch):
     assert rec["kwargs"]["encoding"] == "utf-8"
 
 
+def test_synthesize_device_defaults_cpu_and_threads_through(bridged, monkeypatch):
+    rec: dict = {}
+    monkeypatch.setattr(tts_bridge.subprocess, "run", fake_run_factory(rec))
+    tts_bridge.synthesize("Xin chào.", Voice(label="x", preset="Ngọc Lan"))
+    cmd = rec["cmd"]
+    assert cmd[cmd.index("--device") + 1] == "cpu"  # default = zero behavior change
+
+
+def test_synthesize_device_cuda_passed(bridged, monkeypatch):
+    rec: dict = {}
+    monkeypatch.setattr(tts_bridge.subprocess, "run", fake_run_factory(rec))
+    tts_bridge.synthesize("Xin chào.", Voice(label="x", preset="Ngọc Lan"),
+                          device="cuda")
+    cmd = rec["cmd"]
+    assert cmd[cmd.index("--device") + 1] == "cuda"
+
+
+def test_gpu_available_probe(monkeypatch, tmp_path):
+    monkeypatch.setattr(tts_bridge, "TTS_PYTHON", tmp_path / "python.exe")
+    (tmp_path / "python.exe").write_bytes(b"")
+    monkeypatch.setattr(tts_bridge, "_gpu_cache", None)
+
+    def fake_probe(cmd, **kwargs):
+        return types.SimpleNamespace(returncode=0, stdout="1", stderr="")
+
+    monkeypatch.setattr(tts_bridge.subprocess, "run", fake_probe)
+    assert tts_bridge.gpu_available() is True
+    # cached: a second call must not re-probe even if the prober would say no
+    monkeypatch.setattr(tts_bridge.subprocess, "run",
+                        lambda *a, **k: types.SimpleNamespace(returncode=0, stdout="0", stderr=""))
+    assert tts_bridge.gpu_available() is True
+
+
+def test_gpu_unavailable_when_probe_says_no(monkeypatch, tmp_path):
+    monkeypatch.setattr(tts_bridge, "TTS_PYTHON", tmp_path / "python.exe")
+    (tmp_path / "python.exe").write_bytes(b"")
+    monkeypatch.setattr(tts_bridge, "_gpu_cache", None)
+    monkeypatch.setattr(tts_bridge.subprocess, "run",
+                        lambda *a, **k: types.SimpleNamespace(returncode=0, stdout="0", stderr=""))
+    assert tts_bridge.gpu_available() is False
+
+
+def test_gpu_unavailable_when_venv_absent(monkeypatch, tmp_path):
+    monkeypatch.setattr(tts_bridge, "TTS_PYTHON", tmp_path / "nope" / "python.exe")
+    monkeypatch.setattr(tts_bridge, "_gpu_cache", None)
+    probed = {"n": 0}
+    def spy(*a, **k):
+        probed["n"] += 1
+        raise AssertionError("prober must not run when the venv is absent")
+    monkeypatch.setattr(tts_bridge.subprocess, "run", spy)
+    assert tts_bridge.gpu_available() is False
+    assert probed["n"] == 0  # short-circuited on tts_available(), no subprocess
+
+
 def test_synthesize_clone_voice_passes_ref_and_transcript(bridged, monkeypatch, tmp_path):
     rec: dict = {}
     monkeypatch.setattr(tts_bridge.subprocess, "run", fake_run_factory(rec))

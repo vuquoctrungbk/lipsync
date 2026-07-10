@@ -1,7 +1,11 @@
 # Idempotent bootstrap for the ISOLATED text-to-speech venv (tools/tts/.venv).
 # Separate from the main .venv on purpose: modern TTS stacks need newer
 # transformers/onnx than the pinned SadTalker stack tolerates. Re-runnable:
-#   powershell -ExecutionPolicy Bypass -File scripts\setup_tts_env.ps1
+#   powershell -ExecutionPolicy Bypass -File scripts\setup_tts_env.ps1        # CPU (default)
+#   powershell -ExecutionPolicy Bypass -File scripts\setup_tts_env.ps1 -Gpu   # + PyTorch CUDA
+# -Gpu adds torch/torchaudio (CUDA) + transformers (~2.5 GB) so the TTS tab can
+# offer a GPU device. CPU (torch-free ONNX) works without it.
+param([switch]$Gpu)
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot\..
 
@@ -32,4 +36,20 @@ if ($LASTEXITCODE -ne 0) { throw "TTS dependency install failed (exit $LASTEXITC
 & $vpy -c "import vieneu; print('vieneu import OK')"
 if ($LASTEXITCODE -ne 0) { throw "vieneu import smoke failed (exit $LASTEXITCODE)" }
 
-Write-Host "TTS setup complete. First synthesis will download model weights (needs internet once)." -ForegroundColor Green
+# 5. Optional GPU extras — VieNeu v3turbo's PyTorch backend (CUDA). Minimal set
+#    only (torch/torchaudio/transformers); the full vieneu[gpu] extra pulls
+#    Windows-fragile lmdeploy/triton/llama-cpp that v3turbo does not use.
+if ($Gpu) {
+    Write-Host "Installing GPU extras (PyTorch CUDA, ~2.5 GB)..." -ForegroundColor Cyan
+    & $vpy -m pip install -r tools\tts\requirements-gpu.lock
+    if ($LASTEXITCODE -ne 0) { throw "TTS GPU extras install failed (exit $LASTEXITCODE)" }
+    $torchInfo = & $vpy -c "import torch; print('torch', torch.__version__, 'cuda', torch.cuda.is_available())"
+    if ($LASTEXITCODE -ne 0) { throw "torch GPU smoke failed (exit $LASTEXITCODE)" }
+    Write-Host $torchInfo
+    if ($torchInfo -notmatch 'cuda True') {
+        Write-Warning "torch installed but CUDA not available (driver/GPU mismatch?) — the app keeps the GPU option HIDDEN until this is fixed."
+    }
+}
+
+$mode = if ($Gpu) { "CPU + GPU" } else { "CPU (add -Gpu for GPU)" }
+Write-Host "TTS setup complete [$mode]. First synthesis downloads model weights (internet once)." -ForegroundColor Green

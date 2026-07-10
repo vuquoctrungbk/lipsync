@@ -29,13 +29,17 @@ class BaseEngine:
     name = "base"
     models: tuple[str, ...] = ()
 
-    def __init__(self, model: str):
+    def __init__(self, model: str, device: str = "cpu"):
         if model not in self.models:
             raise TTSEngineError(
                 KIND_INPUT,
                 f"engine '{self.name}' has no model '{model}' (choices: {', '.join(self.models)})",
             )
+        if device not in ("auto", "cpu", "cuda"):
+            raise TTSEngineError(
+                KIND_INPUT, f"device must be auto|cpu|cuda, got '{device}'")
         self.model = model
+        self.device = device
 
     def load(self) -> None:
         """Import the SDK and load weights (downloads on first run)."""
