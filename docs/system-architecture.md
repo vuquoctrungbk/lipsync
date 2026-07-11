@@ -188,6 +188,16 @@ model; absolute Vietnamese judgment lives in `docs/vietnamese-validation-protoco
 The UI "Analyze sync drift" button (opt-in; ~1 min SyncNet per minute of video)
 scores per-60s windows of a finished render for drift detection. Never automatic.
 
+## Cloud render offload (optional, in evaluation)
+
+The next-gen hybrid animation path (Ditto motion + LatentSync mouth-refine) is
+VRAM-bound locally: LatentSync-512 needs ~18 GB → 157 min for a 20 s clip on the
+3060. `tools/colab/lipsync_render.ipynb` offloads just that stage to Colab
+(T4 free, config 256) with Google Drive job handoff (`lipsync-jobs/in|out/`);
+`scripts/matte_video.py` then feeds the returned clip through the SAME local
+matte → green/WebM-alpha pipeline (privacy: only image + audio leave the
+machine, matting stays local). Details: `plans/260711-0040-colab-t4-hybrid-render-offload/`.
+
 ## External dependencies
 
 - SadTalker source vendored under `third_party/SadTalker` (pinned commit
