@@ -51,12 +51,19 @@
   weights from official GitHub releases into `models/sadtalker/`.
 - `cuda_smoke_test.py` — proves CUDA + fp16 matmul work (the RDP CUDA gate).
 - `sync_metrics.py` — objective lip-sync scoring (LSE-D/LSE-C) via SyncNet harness in isolated `tools/syncnet/` venv; relative metrics (English-trained); per-window drift analysis.
+- `matte_video.py` — CLI mattes ANY talking-head video onto green/WebM-alpha via the app's streaming matte pipeline (`iter_video_frames` + `composite` + `Pipeline._matting`); built for Colab hybrid clips, works on anything. `--alpha-from <clip>` computes alpha from a cleaner frame-aligned encode (`composite(alpha_source=...)`) — fixes matte flicker caused by the mouth-refine pass's heavy recompression (background motion is identical, so the clean clip's alpha lines up).
+
+## Tools: Colab render offload (`tools/colab/`)
+
+- `lipsync_render.ipynb` — versioned Colab notebook (Open-in-Colab badge, T4 free): 2 isolated uv venvs (Ditto torch 2.3.1/numpy 1.26 vs LatentSync torch 2.5.1 — conflicting stacks, mirrors the proven local 2-venv layout), pinned repo commits (`c3e47ee` / `a229c39`), HF checkpoints (`digital-avatar/ditto-talkinghead` PyTorch path + `ByteDance/LatentSync-1.5` = the 256 model), Drive job handoff (`lipsync-jobs/in|out/<job>/`), per-job `timings.json` + VRAM-peak poller. Offloads the VRAM-bound hybrid render (LatentSync-512 needs ~18 GB → 157 min/20 s on the 3060); matte stays local.
 
 ## Tests
 
 **Shared**: `tests/conftest.py` (behavior-bearing fakes: FakeMatte, FakeRVM, FakeBiRefNet; tiny_png_bytes fixture; duck-type test doubles that record calls + return real alpha arrays).
 
 **Default (fast, 61 tests)**: `tests/test_lipsync_units.py` (config, hardware, audio duration guard, hex parsing).
+
+**Colab notebook (static)**: `tests/test_colab_notebook.py` (nbformat-4 JSON validity, every code cell compiles, pinned commits + HF repo + 256-config identifiers, no committed outputs, badge path). `tests/test_matte_video.py` (arg contract, torch-free module import via clean subprocess; `RUN_E2E=1` mattes a real spike clip).
 
 **Model tests** (`RUN_MODEL_TESTS=1`): `tests/test_matting_engines.py` (engine load/unload, reset_clip, alpha shape).
 
@@ -76,6 +83,7 @@
 - `models/` — checkpoints (SadTalker ~1.8 GB, GFPGAN aux ~0.7 GB, BiRefNet cache, RVM cache, VieNeu-TTS weights ~522 MB).
 - `tools/syncnet/` — SyncNet isolation venv (deps conflict with app venv).
 - `tools/tts/.venv/` — TTS isolation venv (VieNeu-TTS deps, ONNX Runtime, HuggingFace; pinned in `tools/tts/requirements.lock`).
+- `tools/joyvasa/`, `tools/ditto/`, `tools/latentsync/` — animation-engine spike workspaces (cloned repos + venvs + weights, multi-GB); disposable, reports are the durable output.
 - `voices/vi/` — user voice clones (.wav + optional .txt transcript sidecar); PII-sensitive, gitignored.
 - `outputs/` — rendered MP4s. `temp/` — per-run work dirs (per-run-id scratch + intermediate files).
 

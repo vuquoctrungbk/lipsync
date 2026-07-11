@@ -12,6 +12,10 @@ third_party/
 tools/syncnet/
 # TTS isolated venv only — tools/tts/ code itself IS tracked
 tools/tts/.venv/
+# Animation-engine spike workspaces (cloned repos + venvs + weights) — disposable; reports are the durable output
+tools/joyvasa/
+tools/ditto/
+tools/latentsync/
 
 # Model checkpoints (downloaded at setup, multi-GB)
 models/

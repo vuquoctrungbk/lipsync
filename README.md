@@ -85,6 +85,28 @@ render on demand (see Vietnamese validation below).
 
 Pure matting: RVM ≈ 25 fps vs BiRefNet ≈ 3.3 fps at 800×1200 (7.6×). Peak VRAM ≈ 6 GB co-resident. The remaining bottleneck is SadTalker's facerender + paste-back — portraits over ~2 MP slow paste-back and grow RAM (the app warns).
 
+## Cloud render — hybrid Ditto + LatentSync trên Colab (optional, đang bake-off)
+
+Hướng animation thế hệ mới (motion tự nhiên hơn SadTalker — đầu/tóc chuyển động theo) đang được đánh giá: **Ditto** (motion) + **LatentSync** (khớp miệng). Bản 512 cần ~18 GB VRAM (157 phút/20 s trên 3060 vì thrashing) nên tầng render nặng offload lên Colab, matte + nền xanh vẫn local:
+
+1. Mở [`tools/colab/lipsync_render.ipynb`](tools/colab/lipsync_render.ipynb) trên Colab (badge trong notebook; T4 free đủ cho config 256).
+2. Tạo job trên Drive: `lipsync-jobs/in/<tên-job>/` gồm `image.png` + `audio.wav` → **Run all** → nhận `out/<tên-job>/hybrid_256.mp4` + `timings.json`.
+3. Về máy local — matte nền xanh + đo sync:
+
+   ```powershell
+   .venv\Scripts\python.exe scripts\matte_video.py --video outputs\colab\hybrid_256.mp4
+   .venv\Scripts\python.exe scripts\sync_metrics.py --video outputs\lipsync_green_<runid>.mp4
+   ```
+
+   Nếu viền/nền bị **nháy** (video final bị nén mạnh làm matte nhiễu): upscale bản final về đúng kích thước bản Ditto thô rồi lấy alpha từ bản thô — nền hai bản chuyển động y hệt (LatentSync chỉ vẽ lại miệng):
+
+   ```powershell
+   ffmpeg -i outputs\colab\hybrid_256.mp4 -vf "scale=1402:-2:flags=lanczos" -crf 16 hybrid_up.mp4
+   .venv\Scripts\python.exe scripts\matte_video.py --video hybrid_up.mp4 --engine birefnet --alpha-from outputs\colab\ditto_raw.mp4
+   ```
+
+Lưu ý riêng tư: ảnh mặt + giọng được upload lên Google (Drive + máy Colab). `scripts/matte_video.py` dùng được cho bất kỳ video talking-head nào (không riêng Colab) — xuất green MP4 / WebM alpha / cả hai.
+
 ## Vietnamese validation
 
 Objective lip-sync scoring (SyncNet LSE-D/LSE-C) plus a Vietnamese phoneme spot-check protocol live in [docs/vietnamese-validation-protocol.md](docs/vietnamese-validation-protocol.md). Score any render with:
@@ -107,6 +129,7 @@ lipsync/               application package (config, hardware, audio, animation, 
 scripts/               setup_env.ps1, setup_tts_env.ps1, download_models.py, cuda_smoke_test.py
 third_party/SadTalker  vendored SadTalker (cloned, pinned commit) — gitignored
 tools/tts/             isolated TTS venv + CLI (VieNeu, Apache-2.0); tools/syncnet = validation harness
+tools/colab/           Colab notebook: hybrid Ditto+LatentSync render offload (T4)
 models/                checkpoints (downloaded) — gitignored
 voices/                your clone-reference audio (LOCAL ONLY — gitignored, personal data)
 outputs/               rendered videos

@@ -248,8 +248,16 @@ def _formats(output_format: str) -> list[str]:
 def composite(frames: Iterator[np.ndarray], fps: float, matte: MattingEngine,
               cfg: RenderConfig, audio_path: str | Path, out_dir: str | Path,
               run_id: str, work_dir: str | Path, total: int | None = None,
-              progress: ProgressFn = None) -> tuple[dict[str, Path], list[str]]:
+              progress: ProgressFn = None,
+              alpha_source: Iterator[np.ndarray] | None = None,
+              ) -> tuple[dict[str, Path], list[str]]:
     """Stream frames through the matte once, fan out to the requested sinks.
+
+    alpha_source: optional frame iterator the alpha is computed FROM instead
+    of the rendered frames — e.g. a cleaner earlier encode whose background
+    motion is identical (mouth-refine passes recompress hard, and compression
+    noise makes the matte flicker). Must be frame-aligned with `frames` and
+    the same size; it has to cover the whole clip.
 
     Returns ({format: final path}, warnings). Raises CompositeError only when
     NO output could be produced; single-sink failures become warnings.
@@ -281,7 +289,23 @@ def composite(frames: Iterator[np.ndarray], fps: float, matte: MattingEngine,
         for i, frame in enumerate(itertools.chain([first], (_prep(f) for f in frames))):
             if frame.shape[:2] != (h, w):
                 frame = frame[:h, :w]
-            alpha = matte.alpha_for(frame)  # ONCE per frame, shared by every sink
+            if alpha_source is None:
+                alpha_input = frame
+            else:
+                try:
+                    # _prep only evens the dims — no free cropping: a center
+                    # mismatch silently shifting the alpha would be worse than
+                    # failing loud.
+                    alpha_input = _prep(next(alpha_source))
+                except StopIteration:
+                    raise CompositeError(
+                        f"alpha_source ran out at frame {i + 1} — it must cover the whole clip")
+                if alpha_input.shape[:2] != (h, w):
+                    raise CompositeError(
+                        f"alpha_source frame is {alpha_input.shape[1]}x{alpha_input.shape[0]} "
+                        f"but the clip is {w}x{h} — scale one to match first "
+                        "(e.g. ffmpeg -vf scale=W:-2)")
+            alpha = matte.alpha_for(alpha_input)  # ONCE per frame, shared by every sink
             for sink in list(sinks):
                 try:
                     sink.write(frame, alpha)
@@ -318,6 +342,7 @@ def composite(frames: Iterator[np.ndarray], fps: float, matte: MattingEngine,
         raise
     finally:
         matte.reset_clip()
-        close = getattr(frames, "close", None)
-        if close:
-            close()
+        for source in (frames, alpha_source):
+            close = getattr(source, "close", None)
+            if close:
+                close()
